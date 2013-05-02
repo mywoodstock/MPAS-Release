@@ -31,8 +31,6 @@ module mpas_core
    use ocn_tendency
    use ocn_diagnostics
 
-   use ocn_monthly_forcing
-
    use ocn_thick_hadv
    use ocn_thick_vadv
 
@@ -137,9 +135,6 @@ module mpas_core
 
       call mpas_ocn_tracer_advection_init(err_tmp)
       err = ior(err,err_tmp)
-
-      call ocn_monthly_forcing_init(err_tmp)
-      err = ior(err, err_tmp)
 
       call ocn_global_diagnostics_init(dminfo,err_tmp)
       err = ior(err, err_tmp)

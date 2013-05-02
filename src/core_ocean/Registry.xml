@@ -40,9 +40,6 @@
 		<dim name="nVertLevelsP1" definition="nVertLevels+1" units="unitless"
 		     description="The number of interfaces in the vertical direction."
 		/>
-		<dim name="nMonths" units="unitless"
-			 description="The number of forcing slices in the monthly forcing fields."
-		/>
 	</dims>
 	<nml_record name="time_management">
 		<nml_option name="config_do_restart" type="logical" default_value=".false." units="unitless"
@@ -335,10 +332,6 @@
 		/>
 	</nml_record>
 	<nml_record name="forcing">
-		<nml_option name="config_use_monthly_forcing" type="logical" default_value=".false." units="unitless"
-		            description="Controls time frequency of forcing.  If false, a constant forcing is used, provided by the input fields normalVelocityForcing, temperatureRestore, and salinityRestore.  If true, forcing is interpolated between monthly fields given by windStressMonthly, temperatureRestoreMonthly, and salinityRestoreMonthly."
-		            possible_values=".true. or .false."
-		/>
 		<nml_option name="config_restoreTS" type="logical" default_value=".false." units="unitless"
 		            description="If true, the restoring term is activated in the tracer equation for temperature and salinity."
 		            possible_values=".true. or .false."
@@ -962,15 +955,6 @@
 		/>
 		<var name="salinityRestore" type="real" dimensions="nCells" streams="ir" units="PSU"
 		     description="Salinity restoring field, for restoring salinity at the surface."
-		/>
-		<var name="windStressMonthly" type="real" dimensions="nMonths nEdges" streams="ir" units="N m^{-2}"
-		     description="Monthly wind stress field, defined at the surface for use in monthly forcing."
-		/>
-		<var name="temperatureRestoreMonthly" type="real" dimensions="nMonths nCells" streams="ir" units="^\circ C"
-		     description="Monthly temperature restorying field, defined at the surface for use in monthly forcing."
-		/>
-		<var name="salinityRestoreMonthly" type="real" dimensions="nMonths nCells" streams="ir" units="PSU"
-		     description="Monthly salinity resotring field, defined at the surface, for use in monthly forcing."
 		/>
 		<var name="edgeSignOnCell" type="integer" dimensions="maxEdges nCells" units="unitless"
 		     description="Sign of edge contributions to a cell for each edge on cell. Used for bit-reproducible loops. Represents directionality of vector connecting cells."
