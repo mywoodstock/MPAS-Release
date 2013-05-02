@@ -1,0 +1,228 @@
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! and the University Corporation for Atmospheric Research (UCAR).
+!
+! Unless noted otherwise source code is licensed under the BSD license.
+! Additional copyright and license information can be found in the LICENSE file
+! distributed with this code, or at http://mpas-dev.github.com/license.html
+!
+!|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+!
+!  ocn_forcing_coupled
+!
+!> \brief MPAS ocean coupled forcing
+!> \author Doug Jacobsen
+!> \date   04/25/12
+!> \version SVN:$Id:$
+!> \details
+!>  This module contains routines for building the forcing arrays,
+!>  if coupled forcing is used.
+!
+!-----------------------------------------------------------------------
+
+module ocn_forcing_coupled
+
+   use mpas_kind_types
+   use mpas_grid_types
+   use mpas_configure
+   use mpas_timekeeping
+   use ocn_constants
+
+   implicit none
+   private
+   save
+
+   !--------------------------------------------------------------------
+   !
+   ! Public parameters
+   !
+   !--------------------------------------------------------------------
+
+   !--------------------------------------------------------------------
+   !
+   ! Public member functions
+   !
+   !--------------------------------------------------------------------
+
+   public :: ocn_forcing_coupled_build_arrays, &
+             ocn_forcing_coupled_init
+
+   !--------------------------------------------------------------------
+   !
+   ! Private module variables
+   !
+   !--------------------------------------------------------------------
+
+   logical :: coupledForcingOn !< Flag to turn on/off coupled forcing
+
+!***********************************************************************
+
+contains
+
+!***********************************************************************
+!
+!  routine ocn_build_forcing_arrays
+!
+!> \brief   Determines the forcing array used for the coupled forcing.
+!> \author  Doug Jacobsen
+!> \date    04/25/12
+!> \version SVN:$Id$
+!> \details 
+!>  This routine computes the forcing arrays used later in MPAS.
+!
+!-----------------------------------------------------------------------
+
+   subroutine ocn_forcing_coupled_build_arrays(timeStamp, grid, state, err)!{{{
+
+      !-----------------------------------------------------------------
+      !
+      ! input variables
+      !
+      !-----------------------------------------------------------------
+
+      type(MPAS_Time_type), intent(in) :: timeStamp
+
+      !-----------------------------------------------------------------
+      !
+      ! input/output variables
+      !
+      !-----------------------------------------------------------------
+
+      type (mesh_type), intent(in) :: grid !< Input: grid information
+
+      type (state_type), intent(inout) :: state !< Input: State information
+
+
+      !-----------------------------------------------------------------
+      !
+      ! output variables
+      !
+      !-----------------------------------------------------------------
+
+      integer, intent(out) :: err !< Output: Error flag
+
+      !-----------------------------------------------------------------
+      !
+      ! local variables
+      !
+      !-----------------------------------------------------------------
+
+      integer :: iEdge, cell1, cell2
+      integer :: iCell, k
+      integer :: index_temperature_flux, index_salinity_flux
+
+      integer, dimension(:,:), pointer :: cellsOnEdge
+
+      real (kind=RKIND) :: meridionalAverage, zonalAverage
+      real (kind=RKIND), dimension(:), pointer :: angleEdge
+      real (kind=RKIND), dimension(:), pointer :: zonalWindStress, meridionalWindStress
+      real (kind=RKIND), dimension(:), pointer :: latentHeatFlux, sensibleHeatFlux, longWaveHeatFluxUp, longWaveHeatFluxDown, evaporationFlux, seaIceHeatFlux, snowFlux
+      real (kind=RKIND), dimension(:), pointer :: seaIceFreshWaterFlux, seaIceSalinityFlux, riverRunoffFlux, iceRunoffFlux
+
+      real (kind=RKIND), dimension(:), pointer :: rainFlux
+      real (kind=RKIND), dimension(:), pointer :: seaLevelPressure, iceFraction
+
+      real (kind=RKIND), dimension(:), pointer :: surfaceMassFlux
+      real (kind=RKIND), dimension(:,:), pointer :: surfaceTracerFlux, windStress
+
+
+#ifdef MPAS_CESM
+      index_temperature_flux = state % index_temperatureFlux
+      index_salinity_flux = state % index_salinityFlux
+
+      angleEdge => grid % angleEdge % array
+
+      cellsOnEdge => grid % cellsOnEdge % array
+
+      windStress => state % windStress % array
+      zonalWindStress => state % zonalWindStress % array
+      meridionalWindStress => state % meridionalWindStress % array
+      latentHeatFlux => state % latentHeatFlux % array
+      sensibleHeatFlux => state % sensibleHeatFlux % array
+      longWaveHeatFluxUp => state % longWaveHeatFluxUp % array
+      longWaveHeatFluxDown => state % longWaveHeatFluxDown % array
+      evaporationFlux => state % evaporationFlux % array
+      seaIceHeatFlux => state % seaIceHeatFlux % array
+      snowFlux => state % snowFlux % array
+
+      seaIceFreshWaterFlux => state % seaIceFreshWaterFlux % array
+      seaIceSalinityFlux => state % seaIceSalinityFlux % array
+      riverRunoffFlux => state % riverRunoffFlux % array
+      iceRunoffFlux => state % iceRunoffFlux % array
+
+      rainFlux => state % rainFlux % array
+
+      seaLevelPressure => state % seaLevelPressure % array
+      iceFraction => state % iceFraction % array
+
+      surfaceMassFlux => state % surfaceMassFlux % array
+      surfaceTracerFlux => state % surfaceTracerFlux % array
+
+      ! Convert CESM wind stress to MPAS-O windstress
+      do iEdge = 1, grid % nEdges
+        cell1 = cellsOnEdge(1, iEdge)
+        cell2 = cellsOnEdge(2, iEdge)
+
+        zonalAverage = 0.5 * (zonalWindStress(cell1) + zonalWindStress(cell2))
+        meridionalAverage = 0.5 * (meridionalWindStress(cell1) + meridionalWindStress(cell2))
+
+        windStress(k, iEdge) = cos(angleEdge(iEdge)) * zonalAverage + sin(angleEdge(iEdge)) * meridionalAverage
+      end do
+
+
+      do iCell = 1, grid % nCells
+!       surfaceTracerFlux(index_temperature_flux, iCell) = (latentHeatFlux(iCell) + evaporationFlux(iCell) * latent_heat_vapor_mks + sensibleHeatFlux(iCell) + longWaveHeatFluxUp(iCell) + longWaveHeatFluxDown(iCell) &
+!                                                          + seaIceHeatFlux(iCell) - (snowFlux(iCell) + iceRunoffFlux(iCell)) * latent_heat_fusion_mks) * hflux_factor
+
+        surfaceTracerFlux(index_temperature_flux, iCell) = (latentHeatFlux(iCell) + sensibleHeatFlux(iCell) + longWaveHeatFluxUp(iCell) + longWaveHeatFluxDown(iCell) &
+                                                           + seaIceHeatFlux(iCell) - (snowFlux(iCell) + iceRunoffFlux(iCell)) * latent_heat_fusion_mks) * hflux_factor
+
+        if(config_use_virtual_salinity_flux) then
+           surfaceTracerFlux(index_salinity_flux, iCell) = (rainFlux(iCell) + snowFlux(iCell) + evaporationFlux(iCell) + seaIceFreshWaterFlux(iCell) + riverRunoffFlux(iCell) + iceRunOffFlux(iCell)) * salinity_factor &
+                                                           + seaIceSalinityFlux(iCell) * sflux_factor
+           surfaceMassFlux(iCell) = 0.0_RKIND
+        else
+           surfaceTracerFlux(index_salinity_flux, iCell) = seaIceSalinityFlux(iCell) * sflux_factor
+
+           surfaceMassFlux(iCell) = snowFlux(iCell) + rainFlux(iCell) + evaporationFlux(iCell) + seaIceFreshWaterFlux(iCell) + iceRunoffFlux(iCell) + riverRunoffFlux(iCell)
+        end if
+      end do
+
+#endif
+   !--------------------------------------------------------------------
+
+   end subroutine ocn_forcing_coupled_build_arrays!}}}
+
+!***********************************************************************
+!
+!  routine ocn_forcing_coupled_init
+!
+!> \brief   Initializes coupled forcing module
+!> \author  Doug Jacobsen
+!> \date    04/25/12
+!> \version SVN:$Id$
+!> \details 
+!>  This routine initializes the coupled forcing module.
+!
+!-----------------------------------------------------------------------
+
+   subroutine ocn_forcing_coupled_init(err)!{{{
+
+      integer, intent(out) :: err !< Output: error flag
+
+      err = 0
+
+      coupledForcingOn = .false.
+
+      if(config_use_coupled_forcing) then
+        coupledForcingOn = .true.
+      end if
+
+   end subroutine ocn_forcing_coupled_init!}}}
+
+!***********************************************************************
+
+end module ocn_forcing_coupled
+
+
+!|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+! vim: foldmethod=marker

@@ -344,6 +344,10 @@
 		            description="Restoring timescale for salinity, $\tau_r$."
 		            possible_values="any positive real value, but typically between 30 and 90 days."
 		/>
+        <nml_option name="config_use_coupled_forcing" type="logical" default_value=".false." units="unitless"
+                    description="Logical flag that determines if forcing from a coupler should be used."
+                    possible_values=".true. or .false."
+        />
 	</nml_record>
 	<nml_record name="advection">
 		<nml_option name="config_vert_tracer_adv" type="character" default_value="stencil" units="unitless"
@@ -1001,13 +1005,114 @@
 		<var name="vertDiffTopOfCell" type="real" dimensions="nVertLevelsP1 nCells Time" units="m^2 s^{-1}"
 		     description="vertical diffusion defined at the edge (horizontally) and top (vertically)"
 		/>
-        <var name="windStressZonal" type="real" dimensions="nCells Time" streams="o" units="N m^{-2}"
-             description="reconstructed surface wind stress in the eastward direction."
+        <var name="windStressZonalDiag" type="real" dimensions="nCells Time" streams="o" units="N m^{-2}"
+             description="reconstructed surface wind stress in the eastward direction. Used for diagnostics."
         />
-        <var name="windStressMeridional" type="real" dimensions="nCells Time" streams="o" units="N m^{-2}"
-             description="reconstructed surface wind stress in the northward direction."
+        <var name="windStressMeridionalDiag" type="real" dimensions="nCells Time" streams="o" units="N m^{-2}"
+             description="reconstructed surface wind stress in the northward direction. User for diagnostics."
         />
 	</var_struct>
+    <var_struct name="forcing" time_levs="0">
+#ifdef MPAS_CESM
+        <!-- Input fields for coupling -->
+        <!-- Coupling fields associated with wind stress -->
+        <var name="windStressZonal" type="real" dimensions="nCells Time" units="N m^{-2}"
+             description="Zonal (eastward) component of wind stress at cell centers from coupler."
+        />
+        <var name="windStressMeridional" type="real" dimensions="nCells Time" units="N m^{-2}"
+             description="Meridional (northward) component of wind stress at cell centers from coupler."
+        />
+
+        <!-- Coupling fields associated with heat fluxes -->
+        <var name="latentHeatFlux" type="real" dimensions="nCells Time" units="W m^{-2}"
+             description="Latent heat flux at cell centers from coupler."
+        />
+        <var name="sensibleHeatFlux" type="real" dimensions="nCells Time" units=""
+             description="Sensible heat flux at cell centers from coupler."
+        />
+        <var name="longWaveHeatFluxUp" type="real" dimensions="nCells Time" units=""
+             description="Upward long wave heat flux at cell centers from coupler."
+        />
+        <var name="longWaveHeatFluxDown" type="real" dimensions="nCells Time" units=""
+             description="Downward long wave heat flux at cell centers from coupler."
+        />
+        <var name="seaIceHeatFlux" type="real" dimensions="nCells Time" units=""
+             description="Sea ice heat flux at cell centers from coupler."
+        />
+        <var name="shortWaveHeatFlux" type="real" dimensions="nCells Time" units=""
+             description="Short wave flux at cell centers from coupler."
+        />
+
+        <!-- Coupling fields associated with mass or salinity fluxes -->
+        <var name="evaporationFlux" type="real" dimensions="nCells Time" units=""
+             description="Evaporation flux at cell centers from coupler."
+        />
+        <var name="seaIceSalinityFlux" type="real" dimensions="nCells Time" units=""
+             description="Sea ice salinity flux at cell centers from coupler."
+        />
+        <var name="riverRunoffFlux" type="real" dimensions="nCells Time" units=""
+             description="Fresh water flux from river runoff at cell centers from coupler."
+        />
+        <var name="iceRunoffFlux" type="real" dimensions="nCells Time" units=""
+             description="Fresh water flux from ice runoff at cell centers from coupler."
+        />
+        <var name="rainFlux" type="real" dimensions="nCells Time" units=""
+             description="Fresh water flux from rain at cell centers from coupler."
+        />
+
+        <!-- Misc. coupling fields -->
+        <var name="iceFraction" type="real" dimensions="nCells Time" units="percent"
+             description="Fraction of sea ice coverage at cell centers from coupler."
+        />
+        <var name="prognosticCO2" type="real" dimensions="nCells Time" units=""
+             description="Prognostic CO2 at cell centers from coupler."
+        />
+        <var name="diagnosticCO2" type="real" dimensions="nCells Time" units=""
+             description="Diagnostic CO2 at cell centers from coupler."
+        />
+        <var name="diagnosticCO2" type="real" dimensions="nCells Time" units=""
+             description="Diagnostic CO2 at cell centers from coupler."
+        />
+        <var name="squaredWindSpeed10Meter" type="real" dimensions="nCells Time" units="m^2 s^{-2}"
+             description="Squared wind speed at 10 meters at cell centers from coupler."
+        />
+
+        <!-- Output fields for coupling -->
+        <var name="nAccumulatedCoupled" type="integer" dimensions="Time" units="unitless"
+             description="Number of accumulations in time averaging of coupler fields"
+        />
+        <var name="surfaceMeltHeatFlux" type="real" dimensions="nCells Time" units=""
+             description=""
+        />
+        <var name="temperatureState" type="real" dimensions="nCells Time" units="^\circ C"
+             description="Surface temperature of the ocean."
+        />
+        <var name="salinityState" type="real" dimensions="nCells Time" units="PSU"
+             description="Surface salinity of the ocean."
+        />
+        <var name="zonalVelocityState" type="real" dimensions="nCells Time" units="m s^{-1}"
+             description="Zonal surface velocity reconstructed at cell centers."
+        />
+        <var name="meridionalVelocityState" type="real" dimensions="nCells Time" units="m s^{-1}"
+             description="Meridional surface velocity reconstructed at cell centers."
+        />
+        <var name="zonalSSHGradientState" type="real" dimensions="nCells Time" units=""
+             description="Zonal component of sea surface height gradient at cell centers."
+        />
+        <var name="meridionalSSHGradientState" type="real" dimensions="nCells Time" units=""
+             description="Meridional component of sea surface height gradient at cell centers."
+        />
+        <var name="CO2Flux" type="real" dimensions="nCells Time" units=""
+             description="CO2 Flux."
+        />
+        <var name="DMSFlux" type="real" dimensions="nCells Time" units=""
+             description="DMS Flux."
+        />
+        <var name="surfaceUpwardCO2Flux" type="real" dimensions="nCells Time" units=""
+             description="CO2 flux upward at the surface."
+        />
+#endif
+    </var_struct>
     <var_struct name="scratch" time_levs="0">
         <var name="normalVelocityForcingX" persistence="scratch" type="real" dimensions="nVertLevels nCells Time" units="N m^{-2}"
 		     description="reconstructed wind stress in the x-direction (cartesian)"

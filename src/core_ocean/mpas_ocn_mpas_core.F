@@ -50,6 +50,8 @@ module mpas_core
 
    use ocn_time_average
 
+   use ocn_forcing
+
    type (io_output_object), save :: restart_obj
 
    integer :: current_outfile_frames
@@ -446,7 +448,7 @@ module mpas_core
    
          block_ptr => domain % blocklist
          do while(associated(block_ptr))
-           call ocn_build_forcing_arrays(currTime, block_ptr % mesh, ierr)
+           call ocn_forcing_build_arrays(currTime, block_ptr % mesh, block_ptr % state % time_levs(1) % state, ierr)
            block_ptr => block_ptr % next
          end do
 
@@ -538,8 +540,8 @@ module mpas_core
                                block_ptr % scratch % normalVelocityForcingZonal % array, &
                                block_ptr % scratch % normalVelocityForcingMeridional % array)
 
-         block_ptr % diagnostics % windStressZonal % array = block_ptr % scratch % normalVelocityForcingZonal % array(1,:)
-         block_ptr % diagnostics % windStressMeridional % array = block_ptr % scratch % normalVelocityForcingMeridional % array(1,:)
+         block_ptr % diagnostics % windStressZonalDiag % array = block_ptr % scratch % normalVelocityForcingZonal % array(1,:)
+         block_ptr % diagnostics % windStressMeridionalDiag % array = block_ptr % scratch % normalVelocityForcingMeridional % array(1,:)
          call mpas_deallocate_scratch_field(block_ptr % scratch % normalVelocityForcingX, .true.)
          call mpas_deallocate_scratch_field(block_ptr % scratch % normalVelocityForcingY, .true.)
          call mpas_deallocate_scratch_field(block_ptr % scratch % normalVelocityForcingZ, .true.)
