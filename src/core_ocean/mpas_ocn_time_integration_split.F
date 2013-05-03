@@ -786,7 +786,7 @@ module ocn_time_integration_split
                block % state % time_levs(2) % state % uTransport % array, &
                block % state % time_levs(2) % state % vertTransportVelocityTop % array, err)
 
-            call ocn_tend_thick(block % tend, block % state % time_levs(2) % state, block % mesh)
+            call ocn_tend_thick(block % tend, block % state % time_levs(2) % state, block % forcing, block % mesh)
             block => block % next
          end do
 

@@ -6,6 +6,7 @@ OBJS = mpas_ocn_mpas_core.o \
        mpas_ocn_advection.o \
        mpas_ocn_thick_hadv.o \
        mpas_ocn_thick_vadv.o \
+       mpas_ocn_thick_surface_flux.o \
        mpas_ocn_gm.o \
        mpas_ocn_vel_coriolis.o \
        mpas_ocn_vel_vadv.o \
@@ -71,7 +72,7 @@ mpas_ocn_time_integration_rk4.o: mpas_ocn_tendency.o mpas_ocn_diagnostics.o
 
 mpas_ocn_time_integration_split.o: mpas_ocn_tendency.o mpas_ocn_diagnostics.o
 
-mpas_ocn_tendency.o: mpas_ocn_time_average.o
+mpas_ocn_tendency.o: mpas_ocn_time_average.o mpas_ocn_tracer_surface_flux.o mpas_ocn_thick_surface_flux.o
 
 mpas_ocn_diagnostics.o: mpas_ocn_time_average.o
 
@@ -82,6 +83,8 @@ mpas_ocn_time_average.o:
 mpas_ocn_thick_hadv.o:
 
 mpas_ocn_thick_vadv.o:
+
+mpas_ocn_thick_surface_flux.o: mpas_ocn_forcing.o
 
 mpas_ocn_gm.o: 
 
@@ -155,8 +158,9 @@ mpas_ocn_forcing_coupled.o:
 
 mpas_ocn_mpas_core.o: mpas_ocn_advection.o \
                       mpas_ocn_thick_hadv.o \
-                      mpas_ocn_gm.o \
                       mpas_ocn_thick_vadv.o \
+                      mpas_ocn_thick_surface_flux.o \
+                      mpas_ocn_gm.o \
                       mpas_ocn_vel_coriolis.o \
                       mpas_ocn_vel_vadv.o \
                       mpas_ocn_vel_hmix.o \

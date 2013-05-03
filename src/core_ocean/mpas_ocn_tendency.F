@@ -29,6 +29,7 @@ module ocn_tendency
 
    use ocn_thick_hadv
    use ocn_thick_vadv
+   use ocn_thick_surface_flux
 
    use ocn_vel_coriolis
    use ocn_vel_pressure_grad
@@ -88,24 +89,29 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_tend_thick(tend, s, grid)!{{{
+   subroutine ocn_tend_thick(tend, s, f, grid)!{{{
       implicit none
 
       type (tend_type), intent(inout) :: tend !< Input/Output: Tendency structure
       type (state_type), intent(in) :: s !< Input: State information
+      type (forcing_type), intent(in) :: f !< Input: Forcing information
       type (mesh_type), intent(in) :: grid !< Input: Grid information
 
-      real (kind=RKIND), dimension(:,:), pointer :: layerThicknessEdge, vertTransportVelocityTop, tend_layerThickness, uTransport
+      real (kind=RKIND), dimension(:), pointer :: surfaceMassFlux
+      real (kind=RKIND), dimension(:,:), pointer :: layerThickness, layerThicknessEdge, vertTransportVelocityTop, tend_layerThickness, uTransport
 
       integer :: err
 
       call mpas_timer_start("ocn_tend_thick")
 
       uTransport  => s % uTransport % array
+      layerThickness => s % layerThickness % array
       vertTransportVelocityTop        => s % vertTransportVelocityTop % array
       layerThicknessEdge      => s % layerThicknessEdge % array
 
       tend_layerThickness      => tend % layerThickness % array
+
+      surfaceMassFlux => f % surfaceMassFlux % array
                   
       !
       ! height tendency: start accumulating tendency terms
@@ -132,6 +138,13 @@ contains
       call mpas_timer_start("vadv", .false., thickVadvTimer)
       call ocn_thick_vadv_tend(grid, vertTransportVelocityTop, tend_layerThickness, err)
       call mpas_timer_stop("vadv", thickVadvTimer)
+
+      !
+      ! surface flux tendency
+      !
+      call mpas_timer_start("surface flux", .false.)
+      call ocn_thick_surface_flux_tend(grid, layerThickness, surfaceMassFlux, tend_layerThickness, err)
+      call mpas_timer_stop("surface flux")
 
       call mpas_timer_stop("ocn_tend_thick")
    
