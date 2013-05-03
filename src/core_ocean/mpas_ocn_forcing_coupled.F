@@ -71,7 +71,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_forcing_coupled_build_arrays(timeStamp, grid, state, err)!{{{
+   subroutine ocn_forcing_coupled_build_arrays(timeStamp, grid, forcing, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -89,7 +89,7 @@ contains
 
       type (mesh_type), intent(in) :: grid !< Input: grid information
 
-      type (state_type), intent(inout) :: state !< Input: State information
+      type (forcing_type), intent(inout) :: forcing !< Input: Forcing information
 
 
       !-----------------------------------------------------------------
@@ -121,41 +121,42 @@ contains
       real (kind=RKIND), dimension(:), pointer :: rainFlux
       real (kind=RKIND), dimension(:), pointer :: seaLevelPressure, iceFraction
 
-      real (kind=RKIND), dimension(:), pointer :: surfaceMassFlux
-      real (kind=RKIND), dimension(:,:), pointer :: surfaceTracerFlux, windStress
+      real (kind=RKIND), dimension(:), pointer :: surfaceMassFlux, surfaceWindStress
+      real (kind=RKIND), dimension(:,:), pointer :: surfaceTracerFlux
 
 
 #ifdef MPAS_CESM
-      index_temperature_flux = state % index_temperatureFlux
-      index_salinity_flux = state % index_salinityFlux
+      index_temperature_flux = forcing % index_surfaceTemperatureflux
+      index_salinity_flux = forcing % index_surfaceSalinityFlux
 
       angleEdge => grid % angleEdge % array
 
       cellsOnEdge => grid % cellsOnEdge % array
 
       windStress => state % windStress % array
-      zonalWindStress => state % zonalWindStress % array
-      meridionalWindStress => state % meridionalWindStress % array
-      latentHeatFlux => state % latentHeatFlux % array
-      sensibleHeatFlux => state % sensibleHeatFlux % array
-      longWaveHeatFluxUp => state % longWaveHeatFluxUp % array
-      longWaveHeatFluxDown => state % longWaveHeatFluxDown % array
-      evaporationFlux => state % evaporationFlux % array
-      seaIceHeatFlux => state % seaIceHeatFlux % array
-      snowFlux => state % snowFlux % array
+      zonalWindStress => forcing % zonalWindStress % array
+      meridionalWindStress => forcing % meridionalWindStress % array
+      latentHeatFlux => forcing % latentHeatFlux % array
+      sensibleHeatFlux => forcing % sensibleHeatFlux % array
+      longWaveHeatFluxUp => forcing % longWaveHeatFluxUp % array
+      longWaveHeatFluxDown => forcing % longWaveHeatFluxDown % array
+      evaporationFlux => forcing % evaporationFlux % array
+      seaIceHeatFlux => forcing % seaIceHeatFlux % array
+      snowFlux => forcing % snowFlux % array
 
-      seaIceFreshWaterFlux => state % seaIceFreshWaterFlux % array
-      seaIceSalinityFlux => state % seaIceSalinityFlux % array
-      riverRunoffFlux => state % riverRunoffFlux % array
-      iceRunoffFlux => state % iceRunoffFlux % array
+      seaIceFreshWaterFlux => forcing % seaIceFreshWaterFlux % array
+      seaIceSalinityFlux => forcing % seaIceSalinityFlux % array
+      riverRunoffFlux => forcing % riverRunoffFlux % array
+      iceRunoffFlux => forcing % iceRunoffFlux % array
 
-      rainFlux => state % rainFlux % array
+      rainFlux => forcing % rainFlux % array
 
-      seaLevelPressure => state % seaLevelPressure % array
-      iceFraction => state % iceFraction % array
+      seaLevelPressure => forcing % seaLevelPressure % array
+      iceFraction => forcing % iceFraction % array
 
-      surfaceMassFlux => state % surfaceMassFlux % array
-      surfaceTracerFlux => state % surfaceTracerFlux % array
+      surfaceWindStress => forcing % surfaceWindStress % array
+      surfaceMassFlux => forcing % surfaceMassFlux % array
+      surfaceTracerFlux => forcing % surfaceTracerFlux % array
 
       ! Convert CESM wind stress to MPAS-O windstress
       do iEdge = 1, grid % nEdges
@@ -165,7 +166,7 @@ contains
         zonalAverage = 0.5 * (zonalWindStress(cell1) + zonalWindStress(cell2))
         meridionalAverage = 0.5 * (meridionalWindStress(cell1) + meridionalWindStress(cell2))
 
-        windStress(k, iEdge) = cos(angleEdge(iEdge)) * zonalAverage + sin(angleEdge(iEdge)) * meridionalAverage
+        surfaceWindStress(iEdge) = cos(angleEdge(iEdge)) * zonalAverage + sin(angleEdge(iEdge)) * meridionalAverage
       end do
 
 

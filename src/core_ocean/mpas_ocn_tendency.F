@@ -162,17 +162,20 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_tend_vel(tend, s, d, grid)!{{{
+   subroutine ocn_tend_vel(tend, s, f, d, grid)!{{{
       implicit none
 
       type (tend_type), intent(inout) :: tend !< Input/Output: Tendency structure
       type (state_type), intent(in) :: s !< Input: State information
+      type (forcing_type), intent(in) :: f !< Input: Forcing information
       type (diagnostics_type), intent(in) :: d !< Input: Diagnostic information
       type (mesh_type), intent(in) :: grid !< Input: Grid information
 
+      real (kind=RKIND), dimension(:), pointer :: surfaceWindStress
+
       real (kind=RKIND), dimension(:,:), pointer :: &
-        layerThicknessEdge, h, normalVelocity, density, zMid, pressure, &
-        tend_normalVelocity, circulation, relativeVorticity, viscosity, kineticEnergyCell, &
+        layerThicknessEdge, normalVelocity, density, zMid, pressure, &
+        tend_normalVelocity, circulation, relativeVorticity, viscosity, kineticEnergyCell, & 
         normalizedRelativeVorticityEdge, normalizedPlanetaryVorticityEdge, &
         montgomeryPotential, vertTransportVelocityTop, divergence, vertViscTopOfEdge
 
@@ -248,7 +251,7 @@ contains
       !
 
       call mpas_timer_start("forcings", .false., velForceTimer)
-      call ocn_vel_forcing_tend(grid, normalVelocity, normalVelocityForcing, layerThicknessEdge, tend_normalVelocity, err)
+      call ocn_vel_forcing_tend(grid, normalVelocity, normalVelocityForcing, surfaceWindStress, layerThicknessEdge, tend_normalVelocity, err)
       call mpas_timer_stop("forcings", velForceTimer)
 
       !

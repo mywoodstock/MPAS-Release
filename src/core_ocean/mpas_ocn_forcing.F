@@ -70,7 +70,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_forcing_build_arrays(timeStamp, grid, state, err)!{{{
+   subroutine ocn_forcing_build_arrays(timeStamp, grid, forcing, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -89,7 +89,7 @@ contains
       type (mesh_type), intent(inout) :: &
          grid          !< Input: grid information
 
-      type (state_type), intent(inout) :: state !< Input: State information
+      type (forcing_type), intent(inout) :: forcing !< Input: Forcing information
 
       !-----------------------------------------------------------------
       !
@@ -105,7 +105,7 @@ contains
       !
       !-----------------------------------------------------------------
 
-      call ocn_forcing_coupled_build_arrays(timeStamp, grid, state, err)
+      call ocn_forcing_coupled_build_arrays(timeStamp, grid, forcing, err)
 
    !--------------------------------------------------------------------
 

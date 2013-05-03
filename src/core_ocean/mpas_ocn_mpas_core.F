@@ -451,7 +451,7 @@ module mpas_core
    
          block_ptr => domain % blocklist
          do while(associated(block_ptr))
-           call ocn_forcing_build_arrays(currTime, block_ptr % mesh, block_ptr % state % time_levs(1) % state, ierr)
+           call ocn_forcing_build_arrays(currTime, block_ptr % mesh, block_ptr % forcing, ierr)
            block_ptr => block_ptr % next
          end do
 
