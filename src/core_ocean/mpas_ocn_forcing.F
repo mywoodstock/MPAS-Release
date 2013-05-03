@@ -42,13 +42,16 @@ module ocn_forcing
    !--------------------------------------------------------------------
 
    public :: ocn_forcing_build_arrays, &
-             ocn_forcing_init
+             ocn_forcing_init, &
+             ocn_forcing_transmission
 
    !--------------------------------------------------------------------
    !
    ! Private module variables
    !
    !--------------------------------------------------------------------
+
+   real (kind=RKIND) :: attenuationCoefficient
 
 !***********************************************************************
 
@@ -125,7 +128,32 @@ contains
 
       integer, intent(out) :: err !< Output: error flag
 
+      attenuationCoefficient = config_flux_attenuation_coefficient
+
    end subroutine ocn_forcing_init!}}}
+
+!***********************************************************************
+!
+!  real function ocn_forcing_transmission
+!
+!> \brief   Transmission coefficient for surface forcing.
+!> \author  Doug Jacobsen
+!> \date    05/03/2013
+!> \version SVN:$Id$
+!> \details 
+!>  This function computes and returns the transmission coefficient for surface
+!>  forcing based on depth. It uses an exponential decay function to determine the
+!>  coefficients.
+!
+!-----------------------------------------------------------------------
+
+   real (kind=RKIND) function ocn_forcing_transmission(z)!{{{
+      real (kind=RKIND), intent(in) :: z 
+
+
+      ocn_forcing_transmission = exp(z/attenuationCoefficient)
+
+   end function ocn_forcing_transmission!}}}
 
 !***********************************************************************
 

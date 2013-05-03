@@ -129,7 +129,7 @@ mpas_ocn_tracer_advection_mono.o: mpas_ocn_tracer_advection_helpers.o
 
 mpas_ocn_tracer_advection_helpers.o:
 
-mpas_ocn_tracer_surface_flux.o:
+mpas_ocn_tracer_surface_flux.o: mpas_ocn_forcing.o
 
 mpas_ocn_restoring.o:
 

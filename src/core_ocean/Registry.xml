@@ -348,6 +348,10 @@
                     description="Logical flag that determines if forcing from a coupler should be used."
                     possible_values=".true. or .false."
         />
+        <nml_option name="config_flux_attenuation_coefficient" type="real" default_value="0.001" units="m"
+                    description="Coefficient used to determine transmission of surface fluxes. Fluxes are defined with $e^{z/\gamma}$ where this coefficient is $\gamma$."
+                    possible_values="Any real number $0.0 < \gamma <= 1.0$"
+        />
 	</nml_record>
 	<nml_record name="advection">
 		<nml_option name="config_vert_tracer_adv" type="character" default_value="stencil" units="unitless"
@@ -1013,6 +1017,17 @@
         />
 	</var_struct>
     <var_struct name="forcing" time_levs="0">
+        <var name="surfaceMassFlux" type="real" dimensions="nCells Time" units="m s^{-1}"
+             description="Flux of mass through the ocean surface"
+        />
+        <var_array name="surfaceTracerFlux" type="real" dimensions="nCells Time">
+            <var name="surfaceTemperatureFlux" array_group="dynamics" units="^\circ C m s^{-1}"
+                 description="Flux of temperature through the ocean surface"
+            />
+            <var name="surfaceSalinityFlux" array_group="dynamics" units="g m  kg^{-1} s^{-1}"
+                 description="Flux of salinity through the ocean surface"
+            />
+        </var_array>
 #ifdef MPAS_CESM
         <!-- Input fields for coupling -->
         <!-- Coupling fields associated with wind stress -->
