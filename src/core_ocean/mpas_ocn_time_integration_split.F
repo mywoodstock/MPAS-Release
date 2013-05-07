@@ -94,6 +94,7 @@ module ocn_time_integration_split
                  eoe, oldBtrSubcycleTime, newBtrSubcycleTime, uPerpTime, BtrCorIter, &
                  n_bcl_iter(config_n_ts_iter), stage1_tend_time, startIndex, endIndex
       type (block_type), pointer :: block
+      type (block_type) :: block_d
       real (kind=RKIND) :: normalThicknessFluxSum, thicknessSum, flux, sshEdge, hEdge1, &
                  CoriolisTerm, uCorr, temp, temp_h, coef, barotropicThicknessFlux_coeff, sshCell1, sshCell2
       integer :: num_tracers, ucorr_coef, err
@@ -115,10 +116,13 @@ module ocn_time_integration_split
       call mpas_timer_start("se prep", .false., timer_prep)
       block => domain % blocklist
       do while (associated(block))
+         block_d = block
+
+         !$OMP TASK FIRSTPRIVATE(block_d)
 
          ! Initialize * variables that are used to compute baroclinic tendencies below.
-         do iEdge=1,block % mesh % nEdges
-            do k=1,block % mesh % nVertLevels !maxLevelEdgeTop % array(iEdge)
+         do iEdge=1,block_d % mesh % nEdges
+            do k=1,block_d % mesh % nVertLevels !maxLevelEdgeTop % array(iEdge)
 
                ! The baroclinic velocity needs be recomputed at the beginning of a 
                ! timestep because the implicit vertical mixing is conducted on the
@@ -126,39 +130,42 @@ module ocn_time_integration_split
                ! Note that normalBaroclinicVelocity may now include a barotropic component, because the 
                ! weights layerThickness have changed.  That is OK, because the barotropicForcing variable
                ! subtracts out the barotropic component from the baroclinic.
-                 block % state % time_levs(1) % state % normalBaroclinicVelocity % array(k,iEdge) &
-               = block % state % time_levs(1) % state % normalVelocity    % array(k,iEdge) &
-               - block % state % time_levs(1) % state % normalBarotropicVelocity % array(  iEdge)
+                 block_d % state % time_levs(1) % state % normalBaroclinicVelocity % array(k,iEdge) &
+               = block_d % state % time_levs(1) % state % normalVelocity    % array(k,iEdge) &
+               - block_d % state % time_levs(1) % state % normalBarotropicVelocity % array(  iEdge)
 
-                 block % state % time_levs(2) % state % normalVelocity % array(k,iEdge) &
-               = block % state % time_levs(1) % state % normalVelocity % array(k,iEdge)
+                 block_d % state % time_levs(2) % state % normalVelocity % array(k,iEdge) &
+               = block_d % state % time_levs(1) % state % normalVelocity % array(k,iEdge)
 
-                 block % state % time_levs(2) % state % normalBaroclinicVelocity % array(k,iEdge) &
-               = block % state % time_levs(1) % state % normalBaroclinicVelocity % array(k,iEdge)
+                 block_d % state % time_levs(2) % state % normalBaroclinicVelocity % array(k,iEdge) &
+               = block_d % state % time_levs(1) % state % normalBaroclinicVelocity % array(k,iEdge)
 
-                 block % state % time_levs(2) % state % layerThicknessEdge % array(k,iEdge) &
-               = block % state % time_levs(1) % state % layerThicknessEdge % array(k,iEdge)
+                 block_d % state % time_levs(2) % state % layerThicknessEdge % array(k,iEdge) &
+               = block_d % state % time_levs(1) % state % layerThicknessEdge % array(k,iEdge)
 
             end do 
          end do 
 
-           block % state % time_levs(2) % state % ssh % array(:) &
-         = block % state % time_levs(1) % state % ssh % array(:)
+         block_d % state % time_levs(2) % state % ssh % array(:) &
+         = block_d % state % time_levs(1) % state % ssh % array(:)
 
-         do iCell=1,block % mesh % nCells  
-            do k=1,block % mesh % maxLevelCell % array(iCell)
+         do iCell=1,block_d % mesh % nCells  
+            do k=1,block_d % mesh % maxLevelCell % array(iCell)
 
-                 block % state % time_levs(2) % state % layerThickness % array(k,iCell) &
-               = block % state % time_levs(1) % state % layerThickness % array(k,iCell)
+                 block_d % state % time_levs(2) % state % layerThickness % array(k,iCell) &
+               = block_d % state % time_levs(1) % state % layerThickness % array(k,iCell)
 
-                 block % state % time_levs(2) % state % tracers % array(:,k,iCell) & 
-               = block % state % time_levs(1) % state % tracers % array(:,k,iCell) 
+                 block_d % state % time_levs(2) % state % tracers % array(:,k,iCell) & 
+               = block_d % state % time_levs(1) % state % tracers % array(:,k,iCell) 
 
             end do
          end do
 
+         !$OMP END TASK
+
          block => block % next
       end do
+      !$OMP TASKWAIT
 
       call mpas_timer_stop("se prep", timer_prep)
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -191,19 +198,26 @@ module ocn_time_integration_split
          block => domain % blocklist
          do while (associated(block))
 
+            block_d = block
+
+            !$OMP TASK FIRSTPRIVATE(block_d)
+
             stage1_tend_time = min(split_explicit_step,2)
 
            ! compute vertTransportVelocityTop.  Use u (rather than uTransport) for momentum advection.
            ! Use the most recent time level available.
-           call ocn_vert_transport_velocity_top(block % mesh, block % state % time_levs(stage1_tend_time) % state % layerThickness % array, &
-              block % state % time_levs(stage1_tend_time) % state % layerThicknessEdge % array, &
-              block % state % time_levs(stage1_tend_time) % state % normalVelocity % array, &
-              block % state % time_levs(stage1_tend_time) % state % vertTransportVelocityTop % array, err)
+           call ocn_vert_transport_velocity_top(block_d % mesh, block_d % state % time_levs(stage1_tend_time) % state % layerThickness % array, &
+              block_d % state % time_levs(stage1_tend_time) % state % layerThicknessEdge % array, &
+              block_d % state % time_levs(stage1_tend_time) % state % normalVelocity % array, &
+              block_d % state % time_levs(stage1_tend_time) % state % vertTransportVelocityTop % array, err)
 
-            call ocn_tend_vel(block % tend, block % state % time_levs(stage1_tend_time) % state, block % diagnostics, block % mesh)
+            call ocn_tend_vel(block_d % tend, block_d % state % time_levs(stage1_tend_time) % state, block_d % diagnostics, block_d % mesh)
+
+            !$OMP END TASK
 
             block => block % next
          end do
+         !$OMP TASKWAIT
 
          !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
          ! BEGIN baroclinic iterations on linear Coriolis term
@@ -219,59 +233,63 @@ module ocn_time_integration_split
 
             block => domain % blocklist
             do while (associated(block))
-               allocate(uTemp(block % mesh % nVertLevels))
+               block_d = block
+               !$OMP TASK FIRSTPRIVATE(block_d) PRIVATE(uTemp)
+               allocate(uTemp(block_d % mesh % nVertLevels))
 
                ! Put f*normalBaroclinicVelocity^{perp} in uNew as a work variable
-               call ocn_fuperp(block % state % time_levs(2) % state , block % mesh)
+               call ocn_fuperp(block_d % state % time_levs(2) % state , block_d % mesh)
 
-               do iEdge=1,block % mesh % nEdges
-                  cell1 = block % mesh % cellsOnEdge % array(1,iEdge)
-                  cell2 = block % mesh % cellsOnEdge % array(2,iEdge)
+               do iEdge=1,block_d % mesh % nEdges
+                  cell1 = block_d % mesh % cellsOnEdge % array(1,iEdge)
+                  cell2 = block_d % mesh % cellsOnEdge % array(2,iEdge)
 
                   uTemp = 0.0  ! could put this after with uTemp(maxleveledgetop+1:nvertlevels)=0
-                  do k=1,block % mesh % maxLevelEdgeTop % array(iEdge)
+                  do k=1,block_d % mesh % maxLevelEdgeTop % array(iEdge)
 
                      ! normalBaroclinicVelocityNew = normalBaroclinicVelocityOld + dt*(-f*normalBaroclinicVelocityPerp + T(u*,w*,p*) + g*grad(SSH*) )
                      ! Here uNew is a work variable containing -fEdge(iEdge)*normalBaroclinicVelocityPerp(k,iEdge)
-                      uTemp(k) = block % state % time_levs(1) % state % normalBaroclinicVelocity % array(k,iEdge) &
-                         + dt * (block % tend % normalVelocity % array (k,iEdge) &
-                         + block % state % time_levs(2) % state % normalVelocity % array (k,iEdge) &  ! this is f*normalBaroclinicVelocity^{perp}
-                         + split * gravity * (  block % state % time_levs(2) % state % ssh % array(cell2) &
-                         - block % state % time_levs(2) % state % ssh % array(cell1) ) &
-                          /block % mesh % dcEdge % array(iEdge) )
+                      uTemp(k) = block_d % state % time_levs(1) % state % normalBaroclinicVelocity % array(k,iEdge) &
+                         + dt * (block_d % tend % normalVelocity % array (k,iEdge) &
+                         + block_d % state % time_levs(2) % state % normalVelocity % array (k,iEdge) &  ! this is f*normalBaroclinicVelocity^{perp}
+                         + split * gravity * (  block_d % state % time_levs(2) % state % ssh % array(cell2) &
+                         - block_d % state % time_levs(2) % state % ssh % array(cell1) ) &
+                          /block_d % mesh % dcEdge % array(iEdge) )
                   enddo
 
                   ! thicknessSum is initialized outside the loop because on land boundaries 
                   ! maxLevelEdgeTop=0, but I want to initialize thicknessSum with a 
                   ! nonzero value to avoid a NaN.
-                  normalThicknessFluxSum = block % state % time_levs(2) % state % layerThicknessEdge % array(1,iEdge) * uTemp(1)
-                  thicknessSum  = block % state % time_levs(2) % state % layerThicknessEdge % array(1,iEdge)
+                  normalThicknessFluxSum = block_d % state % time_levs(2) % state % layerThicknessEdge % array(1,iEdge) * uTemp(1)
+                  thicknessSum  = block_d % state % time_levs(2) % state % layerThicknessEdge % array(1,iEdge)
 
-                  do k=2,block % mesh % maxLevelEdgeTop % array(iEdge)
-                     normalThicknessFluxSum = normalThicknessFluxSum + block % state % time_levs(2) % state % layerThicknessEdge % array(k,iEdge) * uTemp(k)
-                     thicknessSum  =  thicknessSum + block % state % time_levs(2) % state % layerThicknessEdge % array(k,iEdge)
+                  do k=2,block_d % mesh % maxLevelEdgeTop % array(iEdge)
+                     normalThicknessFluxSum = normalThicknessFluxSum + block_d % state % time_levs(2) % state % layerThicknessEdge % array(k,iEdge) * uTemp(k)
+                     thicknessSum  =  thicknessSum + block_d % state % time_levs(2) % state % layerThicknessEdge % array(k,iEdge)
                   enddo
-                  block % state % time_levs(1) % state % barotropicForcing % array(iEdge) = split*normalThicknessFluxSum/thicknessSum/dt
+                  block_d % state % time_levs(1) % state % barotropicForcing % array(iEdge) = split*normalThicknessFluxSum/thicknessSum/dt
 
 
-                  do k=1,block % mesh % maxLevelEdgeTop % array(iEdge)
+                  do k=1,block_d % mesh % maxLevelEdgeTop % array(iEdge)
                      ! These two steps are together here:
                      !{\bf u}'_{k,n+1} = {\bf u}'_{k,n} - \Delta t {\overline {\bf G}}
                      !{\bf u}'_{k,n+1/2} = \frac{1}{2}\left({\bf u}^{'}_{k,n} +{\bf u}'_{k,n+1}\right) 
                      ! so that normalBaroclinicVelocityNew is at time n+1/2
-                       block % state % time_levs(2) % state % normalBaroclinicVelocity % array(k,iEdge) &
+                       block_d % state % time_levs(2) % state % normalBaroclinicVelocity % array(k,iEdge) &
                      = 0.5*( &
-                       block % state % time_levs(1) % state % normalBaroclinicVelocity % array(k,iEdge) &
-                     + uTemp(k) - dt * block % state % time_levs(1) % state % barotropicForcing % array(iEdge))
+                       block_d % state % time_levs(1) % state % normalBaroclinicVelocity % array(k,iEdge) &
+                     + uTemp(k) - dt * block_d % state % time_levs(1) % state % barotropicForcing % array(iEdge))
 
                   enddo
  
                enddo ! iEdge
 
                deallocate(uTemp)
+               !$OMP END TASK
 
                block => block % next
             end do
+            !$OMP TASKWAIT
 
             call mpas_timer_start("se halo normalBaroclinicVelocity", .false., timer_halo_normalBaroclinicVelocity)
             call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % normalBaroclinicVelocity)
@@ -300,61 +318,73 @@ module ocn_time_integration_split
 
             block => domain % blocklist
             do while (associated(block))
+               block_d = block
+
+               !$OMP TASK FIRSTPRIVATE(block_d)
 
                ! For Split_Explicit unsplit, simply set normalBarotropicVelocityNew=0, normalBarotropicVelocitySubcycle=0, and uNew=normalBaroclinicVelocityNew
-               block % state % time_levs(2) % state % normalBarotropicVelocity % array(:) = 0.0
+               block_d % state % time_levs(2) % state % normalBarotropicVelocity % array(:) = 0.0
 
-               block % state % time_levs(2) % state % normalVelocity % array(:,:)  = block % state % time_levs(2) % state % normalBaroclinicVelocity % array(:,:) 
+               block_d % state % time_levs(2) % state % normalVelocity % array(:,:)  = block_d % state % time_levs(2) % state % normalBaroclinicVelocity % array(:,:) 
 
-               do iEdge=1,block % mesh % nEdges
-                  do k=1,block % mesh % nVertLevels
+               do iEdge=1,block_d % mesh % nEdges
+                  do k=1,block_d % mesh % nVertLevels
 
                      ! uTranport = normalBaroclinicVelocity + uBolus 
                      ! This is u used in advective terms for layerThickness and tracers 
                      ! in tendency calls in stage 3.
-                       block % state % time_levs(2) % state % uTransport % array(k,iEdge) &
-                     = block % mesh % edgeMask % array(k,iEdge) &
-                     *(  block % state % time_levs(2) % state % normalBaroclinicVelocity       % array(k,iEdge) &
-                       + block % state % time_levs(1) % state % uBolusGM   % array(k,iEdge) )
+                       block_d % state % time_levs(2) % state % uTransport % array(k,iEdge) &
+                     = block_d % mesh % edgeMask % array(k,iEdge) &
+                     *(  block_d % state % time_levs(2) % state % normalBaroclinicVelocity       % array(k,iEdge) &
+                       + block_d % state % time_levs(1) % state % uBolusGM   % array(k,iEdge) )
 
                   enddo
                end do  ! iEdge
+
+               !$OMP END TASK
    
                block => block % next
             end do  ! block
+            !$OMP TASKWAIT
 
          elseif (trim(config_time_integrator) == 'split_explicit') then
 
             ! Initialize variables for barotropic subcycling
             block => domain % blocklist
             do while (associated(block))
+               block_d = block
+
+               !$OMP TASK FIRSTPRIVATE(block_d)
 
                if (config_filter_btr_mode) then
-                  block % state % time_levs(1) % state % barotropicForcing % array(:) = 0.0
+                  block_d % state % time_levs(1) % state % barotropicForcing % array(:) = 0.0
                endif
 
-               do iCell=1,block % mesh % nCells
+               do iCell=1,block_d % mesh % nCells
                   ! sshSubcycleOld = sshOld  
-                    block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(iCell) &
-                  = block % state % time_levs(1) % state % ssh % array(iCell)  
+                    block_d % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(iCell) &
+                  = block_d % state % time_levs(1) % state % ssh % array(iCell)  
                end do
 
-               do iEdge=1,block % mesh % nEdges
+               do iEdge=1,block_d % mesh % nEdges
 
                   ! normalBarotropicVelocitySubcycleOld = normalBarotropicVelocityOld 
-                    block % state % time_levs(oldBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) &
-                  = block % state % time_levs(1) % state % normalBarotropicVelocity % array(iEdge) 
+                    block_d % state % time_levs(oldBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) &
+                  = block_d % state % time_levs(1) % state % normalBarotropicVelocity % array(iEdge) 
 
                   ! normalBarotropicVelocityNew = BtrOld  This is the first for the summation
-                    block % state % time_levs(2) % state % normalBarotropicVelocity % array(iEdge) &
-                  = block % state % time_levs(1) % state % normalBarotropicVelocity % array(iEdge) 
+                    block_d % state % time_levs(2) % state % normalBarotropicVelocity % array(iEdge) &
+                  = block_d % state % time_levs(1) % state % normalBarotropicVelocity % array(iEdge) 
 
                   ! barotropicThicknessFlux = 0  
-                  block % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) = 0.0
+                  block_d % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) = 0.0
                end do
+
+               !$OMP END TASK
 
                block => block % next
             end do  ! block
+            !$OMP TASKWAIT
 
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             ! BEGIN Barotropic subcycle loop
@@ -370,33 +400,38 @@ module ocn_time_integration_split
                   block => domain % blocklist
                   do while (associated(block))
 
-                     do iEdge=1,block % mesh % nEdges
+                     block_d = block
 
-                        cell1 = block % mesh % cellsOnEdge % array(1,iEdge)
-                        cell2 = block % mesh % cellsOnEdge % array(2,iEdge)
+                     !$OMP TASK FIRSTPRIVATE(block_d)
+                     do iEdge=1,block_d % mesh % nEdges
+
+                        cell1 = block_d % mesh % cellsOnEdge % array(1,iEdge)
+                        cell2 = block_d % mesh % cellsOnEdge % array(2,iEdge)
 
                         ! Compute the barotropic Coriolis term, -f*uPerp
                         CoriolisTerm = 0.0
-                        do i = 1,block % mesh % nEdgesOnEdge % array(iEdge)
-                           eoe = block % mesh % edgesOnEdge % array(i,iEdge)
+                        do i = 1,block_d % mesh % nEdgesOnEdge % array(iEdge)
+                           eoe = block_d % mesh % edgesOnEdge % array(i,iEdge)
                            CoriolisTerm = CoriolisTerm &
-                             + block % mesh % weightsOnEdge % array(i,iEdge) &
-                             * block % state % time_levs(uPerpTime) % state % normalBarotropicVelocitySubcycle % array(eoe) &
-                             * block % mesh % fEdge % array(eoe)
+                             + block_d % mesh % weightsOnEdge % array(i,iEdge) &
+                             * block_d % state % time_levs(uPerpTime) % state % normalBarotropicVelocitySubcycle % array(eoe) &
+                             * block_d % mesh % fEdge % array(eoe)
                         end do
       
                         ! normalBarotropicVelocityNew = normalBarotropicVelocityOld + dt/J*(-f*normalBarotropicVelocityoldPerp - g*grad(SSH) + G)
-                        block % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) &
-                          = (block % state % time_levs(oldBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) &
+                        block_d % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) &
+                          = (block_d % state % time_levs(oldBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) &
                           + dt / config_n_btr_subcycles * (CoriolisTerm - gravity &
-                          * (block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell2) &
-                           - block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell1) ) &
-                          / block % mesh % dcEdge % array(iEdge) &
-                          + block % state % time_levs(1) % state % barotropicForcing % array(iEdge))) * block % mesh % edgeMask % array(1, iEdge)
+                          * (block_d % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell2) &
+                           - block_d % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell1) ) &
+                          / block_d % mesh % dcEdge % array(iEdge) &
+                          + block_d % state % time_levs(1) % state % barotropicForcing % array(iEdge))) * block_d % mesh % edgeMask % array(1, iEdge)
                      end do
+                     !$OMP END TASK
 
                      block => block % next
                   end do  ! block
+                  !$OMP TASKWAIT
 
                 !   boundary update on normalBarotropicVelocityNew
                 call mpas_timer_start("se halo normalBarotropicVelocity", .false., timer_halo_normalBarotropicVelocity)
@@ -409,8 +444,10 @@ module ocn_time_integration_split
               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
               block => domain % blocklist
               do while (associated(block))
-      
-                block % tend % ssh % array(:) = 0.0
+                block_d = block
+
+                !$OMP TASK FIRSTPRIVATE(block_d)
+                block_d % tend % ssh % array(:) = 0.0
       
                 if (config_btr_solve_SSH2) then
                    ! If config_btr_solve_SSH2=.true., then do NOT accumulate barotropicThicknessFlux in this SSH predictor 
@@ -426,77 +463,81 @@ module ocn_time_integration_split
                 ! config_btr_gam1_velWt1=0.5     flux = 1/2*(normalBarotropicVelocityNew+normalBarotropicVelocityOld)*H
                 ! config_btr_gam1_velWt1=  0     flux = normalBarotropicVelocityOld*H
 
-                do iCell = 1, block % mesh % nCells
-                  do i = 1, block % mesh % nEdgesOnCell % array(iCell)
-                    iEdge = block % mesh % edgesOnCell % array(i, iCell)
+                do iCell = 1, block_d % mesh % nCells
+                  do i = 1, block_d % mesh % nEdgesOnCell % array(iCell)
+                    iEdge = block_d % mesh % edgesOnCell % array(i, iCell)
 
-                    cell1 = block % mesh % cellsOnEdge % array(1, iEdge)
-                    cell2 = block % mesh % cellsOnEdge % array(2, iEdge)
+                    cell1 = block_d % mesh % cellsOnEdge % array(1, iEdge)
+                    cell2 = block_d % mesh % cellsOnEdge % array(2, iEdge)
 
-                    sshEdge = 0.5 * (block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell1) &
-                              + block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell2) )
+                    sshEdge = 0.5 * (block_d % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell1) &
+                              + block_d % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell2) )
 
                    ! method 0: orig, works only without pbc:      
-                   !thicknessSum = sshEdge + block % mesh % refBottomDepthTopOfCell % array (block % mesh % maxLevelEdgeTop % array(iEdge)+1)
+                   !thicknessSum = sshEdge + block_d % mesh % refBottomDepthTopOfCell % array (block_d % mesh % maxLevelEdgeTop % array(iEdge)+1)
  
                    ! method 1, matches method 0 without pbcs, works with pbcs.
-                   thicknessSum = sshEdge + min(block % mesh % bottomDepth % array(cell1), &
-                                        block % mesh % bottomDepth % array(cell2))
+                   thicknessSum = sshEdge + min(block_d % mesh % bottomDepth % array(cell1), &
+                                        block_d % mesh % bottomDepth % array(cell2))
 
                    ! method 2: may be better than method 1.
                    ! Take average  of full thickness at two neighboring cells.
-                   !thicknessSum = sshEdge + 0.5 *(  block % mesh % bottomDepth % array(cell1) &
-                   !                       + block % mesh % bottomDepth % array(cell2) )
+                   !thicknessSum = sshEdge + 0.5 *(  block_d % mesh % bottomDepth % array(cell1) &
+                   !                       + block_d % mesh % bottomDepth % array(cell2) )
 
 
-                    flux = ((1.0-config_btr_gam1_velWt1) * block % state % time_levs(oldBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) &
-                           + config_btr_gam1_velWt1 * block % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge)) &
+                    flux = ((1.0-config_btr_gam1_velWt1) * block_d % state % time_levs(oldBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) &
+                           + config_btr_gam1_velWt1 * block_d % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge)) &
                            * thicknessSum 
 
-                    block % tend % ssh % array(iCell) = block % tend % ssh % array(iCell) + block % mesh % edgeSignOncell % array(i, iCell) * flux &
-                           * block % mesh % dvEdge % array(iEdge)
+                    block_d % tend % ssh % array(iCell) = block_d % tend % ssh % array(iCell) + block_d % mesh % edgeSignOncell % array(i, iCell) * flux &
+                           * block_d % mesh % dvEdge % array(iEdge)
 
                   end do
                 end do
 
-                do iEdge=1,block % mesh % nEdges
-                   cell1 = block % mesh % cellsOnEdge % array(1,iEdge)
-                   cell2 = block % mesh % cellsOnEdge % array(2,iEdge)
+                do iEdge=1,block_d % mesh % nEdges
+                   cell1 = block_d % mesh % cellsOnEdge % array(1,iEdge)
+                   cell2 = block_d % mesh % cellsOnEdge % array(2,iEdge)
 
-                   sshEdge = 0.5 * (block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell1) &
-                             + block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell2) )
+                   sshEdge = 0.5 * (block_d % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell1) &
+                             + block_d % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell2) )
 
                    ! method 0: orig, works only without pbc:      
-                   !thicknessSum = sshEdge + block % mesh % refBottomDepthTopOfCell % array (block % mesh % maxLevelEdgeTop % array(iEdge)+1)
+                   !thicknessSum = sshEdge + block_d % mesh % refBottomDepthTopOfCell % array (block_d % mesh % maxLevelEdgeTop % array(iEdge)+1)
  
                    ! method 1, matches method 0 without pbcs, works with pbcs.
-                   thicknessSum = sshEdge + min(block % mesh % bottomDepth % array(cell1), &
-                                        block % mesh % bottomDepth % array(cell2))
+                   thicknessSum = sshEdge + min(block_d % mesh % bottomDepth % array(cell1), &
+                                        block_d % mesh % bottomDepth % array(cell2))
 
                    ! method 2: may be better than method 1.
                    ! take average  of full thickness at two neighboring cells
-                   !thicknessSum = sshEdge + 0.5 *(  block % mesh % bottomDepth % array(cell1) &
-                   !                       + block % mesh % bottomDepth % array(cell2) )
+                   !thicknessSum = sshEdge + 0.5 *(  block_d % mesh % bottomDepth % array(cell1) &
+                   !                       + block_d % mesh % bottomDepth % array(cell2) )
 
-                   flux = ((1.0-config_btr_gam1_velWt1) * block % state % time_levs(oldBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) &
-                          + config_btr_gam1_velWt1 * block % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge)) &
+                   flux = ((1.0-config_btr_gam1_velWt1) * block_d % state % time_levs(oldBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) &
+                          + config_btr_gam1_velWt1 * block_d % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge)) &
                           * thicknessSum 
 
-                   block % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) = block % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) &
+                   block_d % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) = block_d % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) &
                      + barotropicThicknessFlux_coeff*flux
                 end do
       
                 ! SSHnew = SSHold + dt/J*(-div(Flux))
-                do iCell=1,block % mesh % nCells 
+                do iCell=1,block_d % mesh % nCells 
       
-                   block % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(iCell) & 
-                       = block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(iCell) & 
-                       + dt/config_n_btr_subcycles * block % tend % ssh % array(iCell) / block % mesh % areaCell % array (iCell)
+                   block_d % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(iCell) & 
+                       = block_d % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(iCell) & 
+                       + dt/config_n_btr_subcycles * block_d % tend % ssh % array(iCell) / block_d % mesh % areaCell % array (iCell)
       
                 end do
+
+                !$OMP END TASK
       
                 block => block % next
               end do  ! block
+
+              !$OMP TASKWAIT
       
               !   boundary update on SSHnew
               call mpas_timer_start("se halo ssh", .false., timer_halo_ssh)
@@ -511,39 +552,44 @@ module ocn_time_integration_split
       
                 block => domain % blocklist
                 do while (associated(block))
-                   allocate(utemp(block % mesh % nEdges+1))
-                   uTemp(:) = block % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(:)
-                   do iEdge=1,block % mesh % nEdges 
-                     cell1 = block % mesh % cellsOnEdge % array(1,iEdge)
-                     cell2 = block % mesh % cellsOnEdge % array(2,iEdge)
+                   block_d = block
+
+                   !$OMP TASK FIRSTPRIVATE(block_d) PRIVATE(uTemp)
+                   allocate(utemp(block_d % mesh % nEdges+1))
+                   uTemp(:) = block_d % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(:)
+                   do iEdge=1,block_d % mesh % nEdges 
+                     cell1 = block_d % mesh % cellsOnEdge % array(1,iEdge)
+                     cell2 = block_d % mesh % cellsOnEdge % array(2,iEdge)
       
                      ! Compute the barotropic Coriolis term, -f*uPerp
                      CoriolisTerm = 0.0
-                     do i = 1,block % mesh % nEdgesOnEdge % array(iEdge)
-                         eoe = block % mesh % edgesOnEdge % array(i,iEdge)
-                       CoriolisTerm = CoriolisTerm + block % mesh % weightsOnEdge % array(i,iEdge) &
-                             !* block % state % time_levs(uPerpTime) % state % normalBarotropicVelocitySubcycle % array(eoe) &
+                     do i = 1,block_d % mesh % nEdgesOnEdge % array(iEdge)
+                         eoe = block_d % mesh % edgesOnEdge % array(i,iEdge)
+                       CoriolisTerm = CoriolisTerm + block_d % mesh % weightsOnEdge % array(i,iEdge) &
+                             !* block_d % state % time_levs(uPerpTime) % state % normalBarotropicVelocitySubcycle % array(eoe) &
                              * uTemp(eoe) &
-                             * block % mesh % fEdge  % array(eoe) 
+                             * block_d % mesh % fEdge  % array(eoe) 
                      end do
       
                      ! In this final solve for velocity, SSH is a linear
                      ! combination of SSHold and SSHnew.
-                     sshCell1 = (1-config_btr_gam2_SSHWt1)*block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell1) &
-                               +   config_btr_gam2_SSHWt1 *block % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(cell1)
-                     sshCell2 = (1-config_btr_gam2_SSHWt1)*block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell2) &
-                               +   config_btr_gam2_SSHWt1 *block % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(cell2)
+                     sshCell1 = (1-config_btr_gam2_SSHWt1)*block_d % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell1) &
+                               +   config_btr_gam2_SSHWt1 *block_d % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(cell1)
+                     sshCell2 = (1-config_btr_gam2_SSHWt1)*block_d % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell2) &
+                               +   config_btr_gam2_SSHWt1 *block_d % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(cell2)
     
                      ! normalBarotropicVelocityNew = normalBarotropicVelocityOld + dt/J*(-f*normalBarotropicVelocityoldPerp - g*grad(SSH) + G)
-                     block % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) & 
-                         = (block % state % time_levs(oldBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) & 
-                         + dt/config_n_btr_subcycles *(CoriolisTerm - gravity *(sshCell2 - sshCell1) /block % mesh % dcEdge % array(iEdge) &
-                         + block % state % time_levs(1) % state % barotropicForcing % array(iEdge))) * block % mesh % edgeMask % array(1,iEdge)
+                     block_d % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) & 
+                         = (block_d % state % time_levs(oldBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) & 
+                         + dt/config_n_btr_subcycles *(CoriolisTerm - gravity *(sshCell2 - sshCell1) /block_d % mesh % dcEdge % array(iEdge) &
+                         + block_d % state % time_levs(1) % state % barotropicForcing % array(iEdge))) * block_d % mesh % edgeMask % array(1,iEdge)
                    end do
                    deallocate(uTemp)
+                   !$OMP END TASK
       
                    block => block % next
                 end do  ! block
+                !$OMP TASKWAIT
       
                 !   boundary update on normalBarotropicVelocityNew
                 call mpas_timer_start("se halo normalBarotropicVelocity", .false., timer_halo_normalBarotropicVelocity)
@@ -558,90 +604,96 @@ module ocn_time_integration_split
       
                 block => domain % blocklist
                 do while (associated(block))
-                   block % tend % ssh % array(:) = 0.0
+                   block_d = block
+
+                   !$OMP TASK FIRSTPRIVATE(block_d)
+                   block_d % tend % ssh % array(:) = 0.0
       
                   ! config_btr_gam3_velWt2 sets the forward weighting of velocity in the SSH computation
                   ! config_btr_gam3_velWt2=  1     flux = normalBarotropicVelocityNew*H
                   ! config_btr_gam3_velWt2=0.5     flux = 1/2*(normalBarotropicVelocityNew+normalBarotropicVelocityOld)*H
                   ! config_btr_gam3_velWt2=  0     flux = normalBarotropicVelocityOld*H
 
-                  do iCell = 1, block % mesh % nCells
-                    do i = 1, block % mesh % nEdgesOnCell % array(iCell)
-                      iEdge = block % mesh % edgesOnCell % array(i, iCell)
+                  do iCell = 1, block_d % mesh % nCells
+                    do i = 1, block_d % mesh % nEdgesOnCell % array(iCell)
+                      iEdge = block_d % mesh % edgesOnCell % array(i, iCell)
 
-                      cell1 = block % mesh % cellsOnEdge % array(1,iEdge)
-                      cell2 = block % mesh % cellsOnEdge % array(2,iEdge)
+                      cell1 = block_d % mesh % cellsOnEdge % array(1,iEdge)
+                      cell2 = block_d % mesh % cellsOnEdge % array(2,iEdge)
 
                       ! SSH is a linear combination of SSHold and SSHnew.
-                      sshCell1 = (1-config_btr_gam2_SSHWt1)*block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell1) &
-                                +   config_btr_gam2_SSHWt1 *block % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(cell1)
-                      sshCell2 = (1-config_btr_gam2_SSHWt1)*block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell2) &
-                                +   config_btr_gam2_SSHWt1 *block % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(cell2)
+                      sshCell1 = (1-config_btr_gam2_SSHWt1)*block_d % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell1) &
+                                +   config_btr_gam2_SSHWt1 *block_d % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(cell1)
+                      sshCell2 = (1-config_btr_gam2_SSHWt1)*block_d % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell2) &
+                                +   config_btr_gam2_SSHWt1 *block_d % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(cell2)
  
                       sshEdge = 0.5 * (sshCell1 + sshCell2)
 
                      ! method 0: orig, works only without pbc:      
-                     !thicknessSum = sshEdge + block % mesh % refBottomDepthTopOfCell % array (block % mesh % maxLevelEdgeTop % array(iEdge)+1)
+                     !thicknessSum = sshEdge + block_d % mesh % refBottomDepthTopOfCell % array (block_d % mesh % maxLevelEdgeTop % array(iEdge)+1)
  
                      ! method 1, matches method 0 without pbcs, works with pbcs.
-                     thicknessSum = sshEdge + min(block % mesh % bottomDepth % array(cell1), &
-                                          block % mesh % bottomDepth % array(cell2))
+                     thicknessSum = sshEdge + min(block_d % mesh % bottomDepth % array(cell1), &
+                                          block_d % mesh % bottomDepth % array(cell2))
 
                      ! method 2: may be better than method 1.
                      ! take average  of full thickness at two neighboring cells
-                     !thicknessSum = sshEdge + 0.5 *(  block % mesh % bottomDepth % array(cell1) &
-                     !                       + block % mesh % bottomDepth % array(cell2) )
+                     !thicknessSum = sshEdge + 0.5 *(  block_d % mesh % bottomDepth % array(cell1) &
+                     !                       + block_d % mesh % bottomDepth % array(cell2) )
       
        
-                      flux = ((1.0-config_btr_gam3_velWt2) * block % state % time_levs(oldBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) &
-                             + config_btr_gam3_velWt2 * block % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge)) &
+                      flux = ((1.0-config_btr_gam3_velWt2) * block_d % state % time_levs(oldBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) &
+                             + config_btr_gam3_velWt2 * block_d % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge)) &
                              * thicknessSum
 
-                      block % tend % ssh % array(iCell) = block % tend % ssh % array(iCell) + block % mesh % edgeSignOnCell % array(i, iCell) * flux &
-                             * block % mesh % dvEdge % array(iEdge)
+                      block_d % tend % ssh % array(iCell) = block_d % tend % ssh % array(iCell) + block_d % mesh % edgeSignOnCell % array(i, iCell) * flux &
+                             * block_d % mesh % dvEdge % array(iEdge)
 
                     end do
                   end do
 
-                  do iEdge=1,block % mesh % nEdges
-                     cell1 = block % mesh % cellsOnEdge % array(1,iEdge)
-                     cell2 = block % mesh % cellsOnEdge % array(2,iEdge)
+                  do iEdge=1,block_d % mesh % nEdges
+                     cell1 = block_d % mesh % cellsOnEdge % array(1,iEdge)
+                     cell2 = block_d % mesh % cellsOnEdge % array(2,iEdge)
       
                      ! SSH is a linear combination of SSHold and SSHnew.
-                     sshCell1 = (1-config_btr_gam2_SSHWt1)*block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell1) &
-                               +   config_btr_gam2_SSHWt1 *block % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(cell1)
-                     sshCell2 = (1-config_btr_gam2_SSHWt1)*block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell2) &
-                               +   config_btr_gam2_SSHWt1 *block % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(cell2)
+                     sshCell1 = (1-config_btr_gam2_SSHWt1)*block_d % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell1) &
+                               +   config_btr_gam2_SSHWt1 *block_d % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(cell1)
+                     sshCell2 = (1-config_btr_gam2_SSHWt1)*block_d % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(cell2) &
+                               +   config_btr_gam2_SSHWt1 *block_d % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(cell2)
                      sshEdge = 0.5 * (sshCell1 + sshCell2)
 
                      ! method 0: orig, works only without pbc:      
-                     !thicknessSum = sshEdge + block % mesh % refBottomDepthTopOfCell % array (block % mesh % maxLevelEdgeTop % array(iEdge)+1)
+                     !thicknessSum = sshEdge + block_d % mesh % refBottomDepthTopOfCell % array (block_d % mesh % maxLevelEdgeTop % array(iEdge)+1)
  
                      ! method 1, matches method 0 without pbcs, works with pbcs.
-                     thicknessSum = sshEdge + min(block % mesh % bottomDepth % array(cell1), &
-                                          block % mesh % bottomDepth % array(cell2))
+                     thicknessSum = sshEdge + min(block_d % mesh % bottomDepth % array(cell1), &
+                                          block_d % mesh % bottomDepth % array(cell2))
 
                      ! method 2, better, I think.
                      ! take average  of full thickness at two neighboring cells
-                     !thicknessSum = sshEdge + 0.5 *(  block % mesh % bottomDepth % array(cell1) &
-                     !                       + block % mesh % bottomDepth % array(cell2) )
+                     !thicknessSum = sshEdge + 0.5 *(  block_d % mesh % bottomDepth % array(cell1) &
+                     !                       + block_d % mesh % bottomDepth % array(cell2) )
       
-                     flux = ((1.0-config_btr_gam3_velWt2) * block % state % time_levs(oldBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) &
-                            + config_btr_gam3_velWt2 * block % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge)) &
+                     flux = ((1.0-config_btr_gam3_velWt2) * block_d % state % time_levs(oldBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge) &
+                            + config_btr_gam3_velWt2 * block_d % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge)) &
                             * thicknessSum
       
-                     block % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) = block % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) + flux
+                     block_d % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) = block_d % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) + flux
                   end do
       
                   ! SSHnew = SSHold + dt/J*(-div(Flux))
-                  do iCell=1,block % mesh % nCells 
-                    block % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(iCell) & 
-                          = block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(iCell) & 
-                          + dt/config_n_btr_subcycles * block % tend % ssh % array(iCell) / block % mesh % areaCell % array (iCell)
+                  do iCell=1,block_d % mesh % nCells 
+                    block_d % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(iCell) & 
+                          = block_d % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(iCell) & 
+                          + dt/config_n_btr_subcycles * block_d % tend % ssh % array(iCell) / block_d % mesh % areaCell % array (iCell)
                   end do
+
+                  !$OMP END TASK
       
                   block => block % next
                 end do  ! block
+                !$OMP TASKWAIT
       
                 !   boundary update on SSHnew
                 call mpas_timer_start("se halo ssh", .false., timer_halo_ssh)
@@ -655,20 +707,26 @@ module ocn_time_integration_split
       
                block => domain % blocklist
                do while (associated(block))
+                  block_d = block
+
+                  !$OMP TASK FIRSTPRIVATE(block_d)
       
                   ! normalBarotropicVelocityNew = normalBarotropicVelocityNew + normalBarotropicVelocitySubcycleNEW
                   ! This accumulates the sum.
                   ! If the Barotropic Coriolis iteration is limited to one, this could 
                   ! be merged with the above code.
-                  do iEdge=1,block % mesh % nEdges 
+                  do iEdge=1,block_d % mesh % nEdges 
       
-                       block % state % time_levs(2) % state % normalBarotropicVelocity % array(iEdge) &
-                     = block % state % time_levs(2) % state % normalBarotropicVelocity % array(iEdge) & 
-                     + block % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge)  
+                       block_d % state % time_levs(2) % state % normalBarotropicVelocity % array(iEdge) &
+                     = block_d % state % time_levs(2) % state % normalBarotropicVelocity % array(iEdge) & 
+                     + block_d % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(iEdge)  
       
                   end do  ! iEdge
+                  !$OMP END TASK
+
                   block => block % next
                end do  ! block
+               !$OMP TASKWAIT
       
                ! advance time pointers
                oldBtrSubcycleTime = mod(oldBtrSubcycleTime,2)+1
@@ -682,17 +740,24 @@ module ocn_time_integration_split
             ! Normalize Barotropic subcycle sums: ssh, normalBarotropicVelocity, and F
             block => domain % blocklist
             do while (associated(block))
+
+               block_d = block
+
+               !$OMP TASK FIRSTPRIVATE(block_d)
       
-               do iEdge=1,block % mesh % nEdges
-                  block % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) = block % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) &
+               do iEdge=1,block_d % mesh % nEdges
+                  block_d % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) = block_d % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) &
                       / (config_n_btr_subcycles*config_btr_subcycle_loop_factor)
       
-                  block % state % time_levs(2) % state % normalBarotropicVelocity % array(iEdge) = block % state % time_levs(2) % state % normalBarotropicVelocity % array(iEdge) & 
+                  block_d % state % time_levs(2) % state % normalBarotropicVelocity % array(iEdge) = block_d % state % time_levs(2) % state % normalBarotropicVelocity % array(iEdge) & 
                      / (config_n_btr_subcycles*config_btr_subcycle_loop_factor + 1)
                end do
+
+               !$OMP END TASK
       
                block => block % next
             end do  ! block
+            !$OMP TASKWAIT
       
       
             ! boundary update on F
@@ -708,7 +773,10 @@ module ocn_time_integration_split
             block => domain % blocklist
             do while (associated(block))
 
-               allocate(uTemp(block % mesh % nVertLevels))
+               block_d = block
+
+               !$OMP TASK FIRSTPRIVATE(block_d) PRIVATE(uTemp)
+               allocate(uTemp(block_d % mesh % nVertLevels))
 
                ! Correction velocity    uCorr = (Flux - Sum(h u*))/H
                ! or, for the full latex version:
@@ -722,37 +790,37 @@ module ocn_time_integration_split
                   ucorr_coef = 0
                endif
 
-               do iEdge=1,block % mesh % nEdges
+               do iEdge=1,block_d % mesh % nEdges
 
                   ! velocity for uCorrection is normalBarotropicVelocity + normalBaroclinicVelocity + uBolus
                   uTemp(:) &
-                     = block % state % time_levs(2) % state % normalBarotropicVelocity     % array(  iEdge) &
-                     + block % state % time_levs(2) % state % normalBaroclinicVelocity     % array(:,iEdge) &
-                     + block % state % time_levs(1) % state % uBolusGM % array(:,iEdge)
+                     = block_d % state % time_levs(2) % state % normalBarotropicVelocity     % array(  iEdge) &
+                     + block_d % state % time_levs(2) % state % normalBaroclinicVelocity     % array(:,iEdge) &
+                     + block_d % state % time_levs(1) % state % uBolusGM % array(:,iEdge)
 
                   ! thicknessSum is initialized outside the loop because on land boundaries 
                   ! maxLevelEdgeTop=0, but I want to initialize thicknessSum with a 
                   ! nonzero value to avoid a NaN.
-                  normalThicknessFluxSum = block % state % time_levs(2) % state % layerThicknessEdge % array(1,iEdge) * uTemp(1)
-                  thicknessSum  = block % state % time_levs(2) % state % layerThicknessEdge % array(1,iEdge)
+                  normalThicknessFluxSum = block_d % state % time_levs(2) % state % layerThicknessEdge % array(1,iEdge) * uTemp(1)
+                  thicknessSum  = block_d % state % time_levs(2) % state % layerThicknessEdge % array(1,iEdge)
 
-                  do k=2,block % mesh % maxLevelEdgeTop % array(iEdge)
-                     normalThicknessFluxSum = normalThicknessFluxSum + block % state % time_levs(2) % state % layerThicknessEdge % array(k,iEdge) * uTemp(k)
-                     thicknessSum  =  thicknessSum + block % state % time_levs(2) % state % layerThicknessEdge % array(k,iEdge)
+                  do k=2,block_d % mesh % maxLevelEdgeTop % array(iEdge)
+                     normalThicknessFluxSum = normalThicknessFluxSum + block_d % state % time_levs(2) % state % layerThicknessEdge % array(k,iEdge) * uTemp(k)
+                     thicknessSum  =  thicknessSum + block_d % state % time_levs(2) % state % layerThicknessEdge % array(k,iEdge)
                   enddo
 
-                  uCorr =   ucorr_coef*(( block % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) - normalThicknessFluxSum)/thicknessSum)
+                  uCorr =   ucorr_coef*(( block_d % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) - normalThicknessFluxSum)/thicknessSum)
 
-                  do k=1,block % mesh % nVertLevels
+                  do k=1,block_d % mesh % nVertLevels
 
                      ! uTranport = normalBarotropicVelocity + normalBaroclinicVelocity + uBolus + uCorrection
                      ! This is u used in advective terms for layerThickness and tracers 
                      ! in tendency calls in stage 3.
-                       block % state % time_levs(2) % state % uTransport % array(k,iEdge) &
-                     = block % mesh % edgeMask % array(k,iEdge) &
-                     *(  block % state % time_levs(2) % state % normalBarotropicVelocity       % array(  iEdge) &
-                       + block % state % time_levs(2) % state % normalBaroclinicVelocity       % array(k,iEdge) &
-                       + block % state % time_levs(1) % state % uBolusGM   % array(k,iEdge) &
+                       block_d % state % time_levs(2) % state % uTransport % array(k,iEdge) &
+                     = block_d % mesh % edgeMask % array(k,iEdge) &
+                     *(  block_d % state % time_levs(2) % state % normalBarotropicVelocity       % array(  iEdge) &
+                       + block_d % state % time_levs(2) % state % normalBaroclinicVelocity       % array(k,iEdge) &
+                       + block_d % state % time_levs(1) % state % uBolusGM   % array(k,iEdge) &
                        + uCorr )
 
                   enddo
@@ -760,9 +828,11 @@ module ocn_time_integration_split
                end do ! iEdge
 
                deallocate(uTemp)
+               !$OMP END TASK
 
                block => block % next
             end do  ! block
+            !$OMP TASKWAIT
 
          endif ! split_explicit  
 
@@ -779,16 +849,23 @@ module ocn_time_integration_split
          block => domain % blocklist
          do while (associated(block))
 
+            block_d = block
+
+            !$OMP TASK FIRSTPRIVATE(block_d)
+
             ! compute vertTransportVelocityTop.  Use uTransport for advection of layerThickness and tracers.
             ! Use time level 1 values of layerThickness and layerThicknessEdge because layerThickness has not yet been computed for time level 2.
-            call ocn_vert_transport_velocity_top(block % mesh, block % state % time_levs(1) % state % layerThickness % array, &
-               block % state % time_levs(1) % state % layerThicknessEdge % array, &
-               block % state % time_levs(2) % state % uTransport % array, &
-               block % state % time_levs(2) % state % vertTransportVelocityTop % array, err)
+            call ocn_vert_transport_velocity_top(block_d % mesh, block_d % state % time_levs(1) % state % layerThickness % array, &
+               block_d % state % time_levs(1) % state % layerThicknessEdge % array, &
+               block_d % state % time_levs(2) % state % uTransport % array, &
+               block_d % state % time_levs(2) % state % vertTransportVelocityTop % array, err)
 
-            call ocn_tend_thick(block % tend, block % state % time_levs(2) % state, block % mesh)
+            call ocn_tend_thick(block_d % tend, block_d % state % time_levs(2) % state, block_d % mesh)
+
+            !$OMP END TASK
             block => block % next
          end do
+         !$OMP TASKWAIT
 
          ! update halo for thickness and tracer tendencies
          call mpas_timer_start("se halo thickness", .false., timer_halo_thickness)
@@ -797,10 +874,14 @@ module ocn_time_integration_split
 
          block => domain % blocklist
          do while (associated(block))
-            call ocn_tend_tracer(block % tend, block % state % time_levs(2) % state, block % diagnostics, block % mesh, dt)
+            block_d = block
+            !$OMP TASK FIRSTPRIVATE(block_d)
+            call ocn_tend_tracer(block_d % tend, block_d % state % time_levs(2) % state, block_d % diagnostics, block_d % mesh, dt)
+            !$OMP END TASK
 
             block => block % next
          end do
+         !$OMP TASKWAIT
 
          ! update halo for thickness and tracer tendencies
          call mpas_timer_start("se halo tracers", .false., timer_halo_tracers)
@@ -809,6 +890,10 @@ module ocn_time_integration_split
 
          block => domain % blocklist
          do while (associated(block))
+
+            block_d = block
+
+            !$OMP TASK FIRSTPRIVATE(block_d)
 
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             !
@@ -823,49 +908,49 @@ module ocn_time_integration_split
 
                ! Only need T & S for earlier iterations,
                ! then all the tracers needed the last time through.
-               do iCell=1,block % mesh % nCells
+               do iCell=1,block_d % mesh % nCells
                   ! sshNew is a pointer, defined above.
-                  do k=1,block % mesh % maxLevelCell % array(iCell)
+                  do k=1,block_d % mesh % maxLevelCell % array(iCell)
 
                      ! this is h_{n+1}
                      temp_h &
-                        = block % state % time_levs(1) % state % layerThickness % array(k,iCell) &
-                        + dt* block % tend % layerThickness % array(k,iCell) 
+                        = block_d % state % time_levs(1) % state % layerThickness % array(k,iCell) &
+                        + dt* block_d % tend % layerThickness % array(k,iCell) 
 
                      ! this is h_{n+1/2}
-                       block % state % time_levs(2) % state % layerThickness % array(k,iCell) &
+                       block_d % state % time_levs(2) % state % layerThickness % array(k,iCell) &
                      = 0.5*(  &
-                       block % state % time_levs(1) % state % layerThickness % array(k,iCell) &
+                       block_d % state % time_levs(1) % state % layerThickness % array(k,iCell) &
                        + temp_h)
 
                      do i=startIndex, endIndex
                         ! This is Phi at n+1
                         temp = (  &
-                           block % state % time_levs(1) % state % tracers % array(i,k,iCell) &
-                         * block % state % time_levs(1) % state % layerThickness % array(k,iCell) &
-                         + dt * block % tend % tracers % array(i,k,iCell)) &
+                           block_d % state % time_levs(1) % state % tracers % array(i,k,iCell) &
+                         * block_d % state % time_levs(1) % state % layerThickness % array(k,iCell) &
+                         + dt * block_d % tend % tracers % array(i,k,iCell)) &
                               / temp_h
   
                         ! This is Phi at n+1/2
-                          block % state % time_levs(2) % state % tracers % array(i,k,iCell) &
+                          block_d % state % time_levs(2) % state % tracers % array(i,k,iCell) &
                         = 0.5*( &
-                          block % state % time_levs(1) % state % tracers % array(i,k,iCell) &
+                          block_d % state % time_levs(1) % state % tracers % array(i,k,iCell) &
                           + temp )
                      end do
                   end do
                end do ! iCell
 
-               do iEdge=1,block % mesh % nEdges
+               do iEdge=1,block_d % mesh % nEdges
 
-                  do k=1,block % mesh % nVertLevels
+                  do k=1,block_d % mesh % nVertLevels
 
                      ! u = normalBarotropicVelocity + normalBaroclinicVelocity 
                      ! here normalBaroclinicVelocity is at time n+1/2
                      ! This is u used in next iteration or step
-                       block % state % time_levs(2) % state % normalVelocity    % array(k,iEdge) &
-                     = block % mesh % edgeMask % array(k,iEdge) &
-                     *(  block % state % time_levs(2) % state % normalBarotropicVelocity % array(  iEdge) &
-                       + block % state % time_levs(2) % state % normalBaroclinicVelocity % array(k,iEdge) )
+                       block_d % state % time_levs(2) % state % normalVelocity    % array(k,iEdge) &
+                     = block_d % mesh % edgeMask % array(k,iEdge) &
+                     *(  block_d % state % time_levs(2) % state % normalBarotropicVelocity % array(  iEdge) &
+                       + block_d % state % time_levs(2) % state % normalBaroclinicVelocity % array(k,iEdge) )
 
                   enddo
 
@@ -873,7 +958,7 @@ module ocn_time_integration_split
 
                ! Efficiency note: We really only need this to compute layerThicknessEdge, density, pressure, and SSH 
                ! in this diagnostics solve.
-               call ocn_diagnostic_solve(dt, block % state % time_levs(2) % state, block % mesh, block % scratch)
+               call ocn_diagnostic_solve(dt, block_d % state % time_levs(2) % state, block_d % mesh, block_d % scratch)
 
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             !
@@ -882,21 +967,21 @@ module ocn_time_integration_split
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             elseif (split_explicit_step == config_n_ts_iter) then
 
-               do iCell=1,block % mesh % nCells
-                  do k=1,block % mesh % maxLevelCell % array(iCell)
+               do iCell=1,block_d % mesh % nCells
+                  do k=1,block_d % mesh % maxLevelCell % array(iCell)
 
                      ! this is h_{n+1}
-                        block % state % time_levs(2) % state % layerThickness % array(k,iCell) &
-                      = block % state % time_levs(1) % state % layerThickness % array(k,iCell) &
-                      + dt* block % tend % layerThickness % array(k,iCell) 
+                        block_d % state % time_levs(2) % state % layerThickness % array(k,iCell) &
+                      = block_d % state % time_levs(1) % state % layerThickness % array(k,iCell) &
+                      + dt* block_d % tend % layerThickness % array(k,iCell) 
 
                      ! This is Phi at n+1
-                     do i=1,block % state % time_levs(1) % state % num_tracers
-                           block % state % time_levs(2) % state % tracers % array(i,k,iCell)  &
-                        = (block % state % time_levs(1) % state % tracers % array(i,k,iCell) &
-                         * block % state % time_levs(1) % state % layerThickness % array(k,iCell) &
-                         + dt * block % tend % tracers % array(i,k,iCell)) &
-                         / block % state % time_levs(2) % state % layerThickness % array(k,iCell)
+                     do i=1,block_d % state % time_levs(1) % state % num_tracers
+                           block_d % state % time_levs(2) % state % tracers % array(i,k,iCell)  &
+                        = (block_d % state % time_levs(1) % state % tracers % array(i,k,iCell) &
+                         * block_d % state % time_levs(1) % state % layerThickness % array(k,iCell) &
+                         + dt * block_d % tend % tracers % array(i,k,iCell)) &
+                         / block_d % state % time_levs(2) % state % layerThickness % array(k,iCell)
 
                      enddo
                   end do
@@ -911,19 +996,22 @@ module ocn_time_integration_split
                ! note that normalBaroclinicVelocity is recomputed at the beginning of the next timestep due to Imp Vert mixing,
                ! so normalBaroclinicVelocity does not have to be recomputed here.
       
-               do iEdge=1,block % mesh % nEdges
-                  do k=1,block % mesh % maxLevelEdgeTop % array(iEdge)
-                       block % state % time_levs(2) % state % normalVelocity    % array(k,iEdge) &
-                     = block % state % time_levs(2) % state % normalBarotropicVelocity % array(  iEdge) &
-                    +2*block % state % time_levs(2) % state % normalBaroclinicVelocity % array(k,iEdge) &
-                     - block % state % time_levs(1) % state % normalBaroclinicVelocity % array(k,iEdge)
+               do iEdge=1,block_d % mesh % nEdges
+                  do k=1,block_d % mesh % maxLevelEdgeTop % array(iEdge)
+                       block_d % state % time_levs(2) % state % normalVelocity    % array(k,iEdge) &
+                     = block_d % state % time_levs(2) % state % normalBarotropicVelocity % array(  iEdge) &
+                    +2*block_d % state % time_levs(2) % state % normalBaroclinicVelocity % array(k,iEdge) &
+                     - block_d % state % time_levs(1) % state % normalBaroclinicVelocity % array(k,iEdge)
                   end do
                end do ! iEdges
 
             endif ! split_explicit_step
 
+            !$OMP END TASK
+
             block => block % next
          end do
+         !$OMP TASKWAIT
 
 
 
@@ -935,6 +1023,9 @@ module ocn_time_integration_split
       call mpas_timer_start("se implicit vert mix")
       block => domain % blocklist
       do while(associated(block))
+        block_d = block
+
+        !$OMP TASK FIRSTPRIVATE(block_d)
 
         ! Call ocean diagnostic solve in preparation for vertical mixing.  Note 
         ! it is called again after vertical mixing, because u and tracers change.
@@ -942,12 +1033,14 @@ module ocn_time_integration_split
         ! be computed.  For kpp, more variables may be needed.  Either way, this
         ! could be made more efficient by only computing what is needed for the
         ! implicit vmix routine that follows.
-        call ocn_diagnostic_solve(dt, block % state % time_levs(2) % state, block % mesh, block % scratch)
+        call ocn_diagnostic_solve(dt, block_d % state % time_levs(2) % state, block_d % mesh, block_d % scratch)
 
-        call ocn_vmix_implicit(dt, block % mesh, block % diagnostics, block % state % time_levs(2) % state, err)
+        call ocn_vmix_implicit(dt, block_d % mesh, block_d % diagnostics, block_d % state % time_levs(2) % state, err)
+        !$OMP END TASK
 
         block => block % next
       end do
+      !$OMP TASKWAIT
 
       ! Update halo on u and tracers, which were just updated for implicit vertical mixing.  If not done, 
       ! this leads to lack of volume conservation.  It is required because halo updates in stage 3 are only
@@ -963,33 +1056,39 @@ module ocn_time_integration_split
       block => domain % blocklist
       do while (associated(block))
 
+         block_d = block
+
+         !$OMP TASK FIRSTPRIVATE(block_d)
+
          if (config_prescribe_velocity) then
-            block % state % time_levs(2) % state % normalVelocity % array(:,:) = block % state % time_levs(1) % state % normalVelocity % array(:,:)
+            block_d % state % time_levs(2) % state % normalVelocity % array(:,:) = block_d % state % time_levs(1) % state % normalVelocity % array(:,:)
          end if
 
          if (config_prescribe_thickness) then
-            block % state % time_levs(2) % state % layerThickness % array(:,:) = block % state % time_levs(1) % state % layerThickness % array(:,:)
+            block_d % state % time_levs(2) % state % layerThickness % array(:,:) = block_d % state % time_levs(1) % state % layerThickness % array(:,:)
          end if
 
-         call ocn_diagnostic_solve(dt, block % state % time_levs(2) % state, block % mesh, block % scratch)
+         call ocn_diagnostic_solve(dt, block_d % state % time_levs(2) % state, block_d % mesh, block_d % scratch)
 
          ! Compute velocity transport, used in advection terms of layerThickness and tracer tendency
-            block % state % time_levs(2) % state % uTransport % array(:,:) &
-          = block % state % time_levs(2) % state % normalVelocity % array(:,:) &
-          + block % state % time_levs(2) % state % uBolusGM % array(:,:)
+         block_d % state % time_levs(2) % state % uTransport % array(:,:) &
+          = block_d % state % time_levs(2) % state % normalVelocity % array(:,:) &
+          + block_d % state % time_levs(2) % state % uBolusGM % array(:,:)
 
-         call mpas_reconstruct(block % mesh, block % state % time_levs(2) % state % normalVelocity % array,          &
-                          block % state % time_levs(2) % state % normalVelocityX % array,            &
-                          block % state % time_levs(2) % state % normalVelocityY % array,            &
-                          block % state % time_levs(2) % state % normalVelocityZ % array,            &
-                          block % state % time_levs(2) % state % normalVelocityZonal % array,        &
-                          block % state % time_levs(2) % state % normalVelocityMeridional % array    &
+         call mpas_reconstruct(block_d % mesh, block_d % state % time_levs(2) % state % normalVelocity % array,          &
+                          block_d % state % time_levs(2) % state % normalVelocityX % array,            &
+                          block_d % state % time_levs(2) % state % normalVelocityY % array,            &
+                          block_d % state % time_levs(2) % state % normalVelocityZ % array,            &
+                          block_d % state % time_levs(2) % state % normalVelocityZonal % array,        &
+                          block_d % state % time_levs(2) % state % normalVelocityMeridional % array    &
                          )
 
-         call ocn_time_average_accumulate(block % state % time_levs(2) % state, block % state % time_levs(1) % state)
+         call ocn_time_average_accumulate(block_d % state % time_levs(2) % state, block_d % state % time_levs(1) % state)
+         !$OMP END TASK
 
          block => block % next
       end do
+      !$OMP TASKWAIT
 
       call mpas_timer_stop("se timestep", timer_main)
 
