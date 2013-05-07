@@ -415,12 +415,15 @@ module mpas_core
       integer :: itimestep
       real (kind=RKIND) :: dt
       type (block_type), pointer :: block_ptr
+      type (block_type)  :: block_d
 
       type (MPAS_Time_Type) :: currTime
       character(len=StrKIND) :: timeStamp
       integer :: ierr
    
       ! Eventually, dt should be domain specific
+      !$OMP PARALLEL DEFAULT(FIRSTPRIVATE) SHARED(domain, output_obj, output_frame)
+      !$OMP MASTER
       dt = config_dt
 
       currTime = mpas_get_clock_time(clock, MPAS_NOW, ierr)
@@ -433,9 +436,13 @@ module mpas_core
       block_ptr => domain % blocklist
 
       do while(associated(block_ptr))
-        call ocn_time_average_init(block_ptr % state % time_levs(1) % state)
+        block_d = block_ptr
+        !$OMP TASK FIRSTPRIVATE(block_d)
+        call ocn_time_average_init(block_d % state % time_levs(1) % state)
+        !$OMP END TASK
         block_ptr => block_ptr % next
       end do
+      !$OMP TASKWAIT
 
       ! During integration, time level 1 stores the model state at the beginning of the
       !   time step, and time level 2 stores the state advanced dt in time by timestep(...)
@@ -451,9 +458,13 @@ module mpas_core
    
          block_ptr => domain % blocklist
          do while(associated(block_ptr))
-           call ocn_build_forcing_arrays(currTime, block_ptr % mesh, ierr)
+           block_d = block_ptr
+           !$OMP TASK FIRSTPRIVATE(block_d)
+           call ocn_build_forcing_arrays(currTime, block_d % mesh, ierr)
+           !$OMP END TASK
            block_ptr => block_ptr % next
          end do
+         !$OMP TASKWAIT
 
          call mpas_timer_start("time integration", .false., timeIntTimer)
          call mpas_timestep(domain, itimestep, dt, timeStamp)
@@ -462,9 +473,13 @@ module mpas_core
          ! Move time level 2 fields back into time level 1 for next time step
          block_ptr => domain % blocklist
          do while(associated(block_ptr))
-            call mpas_shift_time_levels_state(block_ptr % state)
+            block_d = block_ptr
+            !$OMP TASK FIRSTPRIVATE(block_d)
+            call mpas_shift_time_levels_state(block_d % state)
+            !$OMP END TASK
             block_ptr => block_ptr % next
          end do
+         !$OMP TASKWAIT
       
          if (mpas_is_alarm_ringing(clock, outputAlarmID, ierr=ierr)) then
             call mpas_reset_clock_alarm(clock, outputAlarmID, ierr=ierr)
@@ -477,17 +492,25 @@ module mpas_core
 
             block_ptr => domain % blocklist
             do while (associated(block_ptr))
-                call ocn_time_average_normalize(block_ptr % state % time_levs(1) % state)
+                block_d = block_ptr
+                !$OMP TASK FIRSTPRIVATE(block_d)
+                call ocn_time_average_normalize(block_d % state % time_levs(1) % state)
+                !$OMP END TASK
                 block_ptr => block_ptr % next
             end do
+            !$OMP TASKWAIT
 
             call ocn_write_output_frame(output_obj, output_frame, domain)
 
             block_ptr => domain % blocklist
             do while (associated(block_ptr))
-                call ocn_time_average_init(block_ptr % state % time_levs(1) % state)
+                block_d = block_ptr
+                !$OMP TASK FIRSTPRIVATE(block_d)
+                call ocn_time_average_init(block_d % state % time_levs(1) % state)
+                !$OMP END TASK
                 block_ptr => block_ptr % next
             end do
+            !$OMP TASKWAIT
          end if
 
          if (mpas_is_alarm_ringing(clock, restartAlarmID, ierr=ierr)) then
@@ -500,6 +523,8 @@ module mpas_core
          end if
 
       end do
+      !$OMP END MASTER
+      !$OMP END PARALLEL
 
    end subroutine mpas_core_run!}}}
    

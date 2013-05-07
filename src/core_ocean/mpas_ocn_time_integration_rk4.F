@@ -84,6 +84,7 @@ module ocn_time_integration_rk4
 
       integer :: iCell, k, i, err
       type (block_type), pointer :: block
+      type (block_type) :: block_d
 
       integer :: rk_step
 
@@ -109,19 +110,23 @@ module ocn_time_integration_rk4
       !
       block => domain % blocklist
       do while (associated(block))
-        block % state % time_levs(2) % state % normalVelocity % array(:,:) = block % state % time_levs(1) % state % normalVelocity % array(:,:)
-        block % state % time_levs(2) % state % layerThickness % array(:,:) = block % state % time_levs(1) % state % layerThickness % array(:,:)
-        do iCell=1,block % mesh % nCells  ! couple tracers to h
-          do k=1,block % mesh % maxLevelCell % array(iCell)
-            block % state % time_levs(2) % state % tracers % array(:,k,iCell) = block % state % time_levs(1) % state % tracers % array(:,k,iCell) &
-                                                                      * block % state % time_levs(1) % state % layerThickness % array(k,iCell)
+        block_d = block
+        !$OMP TASK FIRSTPRIVATE(block_d)
+        block_d % state % time_levs(2) % state % normalVelocity % array(:,:) = block_d % state % time_levs(1) % state % normalVelocity % array(:,:)
+        block_d % state % time_levs(2) % state % layerThickness % array(:,:) = block_d % state % time_levs(1) % state % layerThickness % array(:,:)
+        do iCell=1,block_d % mesh % nCells  ! couple tracers to h
+          do k=1,block_d % mesh % maxLevelCell % array(iCell)
+            block_d % state % time_levs(2) % state % tracers % array(:,k,iCell) = block_d % state % time_levs(1) % state % tracers % array(:,k,iCell) &
+                                                                      * block_d % state % time_levs(1) % state % layerThickness % array(k,iCell)
            end do
         end do
 
-        call mpas_copy_state(block % provis_state, block % state % time_levs(1) % state)
+        call mpas_copy_state(block_d % provis_state, block_d % state % time_levs(1) % state)
+        !$OMP END TASK
 
         block => block % next
       end do
+      !$OMP TASKWAIT
 
       rk_weights(1) = dt/6.
       rk_weights(2) = dt/3.
@@ -154,24 +159,27 @@ module ocn_time_integration_rk4
         call mpas_timer_start("RK4-tendency computations")
         block => domain % blocklist
         do while (associated(block))
-           ! advection of u uses u, while advection of layerThickness and tracers use uTransport.
-           call ocn_vert_transport_velocity_top(block % mesh, block % provis_state % layerThickness % array, &
-              block % provis_state % layerThicknessEdge % array, &
-              block % provis_state % normalVelocity % array, block % provis_state % vertTransportVelocityTop % array, err)
-           call ocn_tend_vel(block % tend, block % provis_state, block % diagnostics, block % mesh)
 
-           call ocn_vert_transport_velocity_top(block % mesh, block % provis_state % layerThickness % array, &
-              block % provis_state % layerThicknessEdge % array, &
-              block % provis_state % uTransport % array, block % provis_state % vertTransportVelocityTop % array, err)
-           call ocn_tend_thick(block % tend, block % provis_state, block % mesh)
+           block_d = block
+           !$OMP TASK FIRSTPRIVATE(block_d)
+           ! advection of u uses u, while advection of layerThickness and tracers use uTransport.
+           call ocn_vert_transport_velocity_top(block_d % mesh, block_d % provis_state % layerThickness % array, block_d % provis_state % layerThicknessEdge % array, &
+              block_d % provis_state % normalVelocity % array, block_d % provis_state % vertTransportVelocityTop % array, err)
+           call ocn_tend_vel(block_d % tend, block_d % provis_state, block_d % diagnostics, block_d % mesh)
+
+           call ocn_vert_transport_velocity_top(block_d % mesh, block_d % provis_state % layerThickness % array, block_d % provis_state % layerThicknessEdge % array, &
+              block_d % provis_state % uTransport % array, block_d % provis_state % vertTransportVelocityTop % array, err)
+           call ocn_tend_thick(block_d % tend, block_d % provis_state, block_d % mesh)
 
            if (config_filter_btr_mode) then
-               call ocn_filter_btr_mode_tend_vel(block % tend, block % provis_state, block % mesh)
+               call ocn_filter_btr_mode_tend_vel(block_d % tend, block_d % provis_state, block_d % mesh)
            endif
 
-           call ocn_tend_tracer(block % tend, block % provis_state, block % diagnostics, block % mesh, dt)
+           call ocn_tend_tracer(block_d % tend, block_d % provis_state, block_d % diagnostics, block_d % mesh, dt)
+           !$OMP END TASK
            block => block % next
         end do
+        !$OMP TASKWAIT
         call mpas_timer_stop("RK4-tendency computations")
 
 ! ---  update halos for prognostic variables
@@ -188,38 +196,41 @@ module ocn_time_integration_rk4
         if (rk_step < 4) then
            block => domain % blocklist
            do while (associated(block))
+              block_d = block
+              !$OMP TASK FIRSTPRIVATE(block_d)
+              block_d % provis_state % normalVelocity % array(:,:) = block_d % state % time_levs(1) % state % normalVelocity % array(:,:)  &
+                                                    + rk_substep_weights(rk_step) * block_d % tend % normalVelocity % array(:,:)
 
-              block % provis_state % normalVelocity % array(:,:) = block % state % time_levs(1) % state % normalVelocity % array(:,:)  &
-                                                          + rk_substep_weights(rk_step) * block % tend % normalVelocity % array(:,:)
-
-              block % provis_state % layerThickness % array(:,:) = block % state % time_levs(1) % state % layerThickness % array(:,:)  &
-                                                    + rk_substep_weights(rk_step) * block % tend % layerThickness % array(:,:)
-              do iCell=1,block % mesh % nCells
-                 do k=1,block % mesh % maxLevelCell % array(iCell)
-                 block % provis_state % tracers % array(:,k,iCell) = ( block % state % time_levs(1) % state % layerThickness % array(k,iCell) * &
-                                                                 block % state % time_levs(1) % state % tracers % array(:,k,iCell)  &
-                                                             + rk_substep_weights(rk_step) * block % tend % tracers % array(:,k,iCell) &
-                                                               ) / block % provis_state % layerThickness % array(k,iCell)
+              block_d % provis_state % layerThickness % array(:,:) = block_d % state % time_levs(1) % state % layerThickness % array(:,:)  &
+                                              + rk_substep_weights(rk_step) * block_d % tend % layerThickness % array(:,:)
+              do iCell=1,block_d % mesh % nCells
+                 do k=1,block_d % mesh % maxLevelCell % array(iCell)
+                 block_d % provis_state % tracers % array(:,k,iCell) = ( block_d % state % time_levs(1) % state % layerThickness % array(k,iCell) * &
+                                                                 block_d % state % time_levs(1) % state % tracers % array(:,k,iCell)  &
+                                                             + rk_substep_weights(rk_step) * block_d % tend % tracers % array(:,k,iCell) &
+                                                               ) / block_d % provis_state % layerThickness % array(k,iCell)
                  end do
 
               end do
               if (config_prescribe_velocity) then
-                 block % provis_state % normalVelocity % array(:,:) = block % state % time_levs(1) % state % normalVelocity % array(:,:)
+                 block_d % provis_state % normalVelocity % array(:,:) = block_d % state % time_levs(1) % state % normalVelocity % array(:,:)
               end if
 
               if (config_prescribe_thickness) then
-                 block % provis_state % layerThickness % array(:,:) = block % state % time_levs(1) % state % layerThickness % array(:,:)
+                 block_d % provis_state % layerThickness % array(:,:) = block_d % state % time_levs(1) % state % layerThickness % array(:,:)
               end if
 
-              call ocn_diagnostic_solve(dt, block % provis_state, block % mesh, block % scratch)
+              call ocn_diagnostic_solve(dt, block_d % provis_state, block_d % mesh, block_d % scratch)
 
               ! Compute velocity transport, used in advection terms of layerThickness and tracer tendency
-              block % provis_state % uTransport % array(:,:) &
-                    = block % provis_state % normalVelocity % array(:,:) &
-                    + block % provis_state % uBolusGM   % array(:,:)
+              block_d % provis_state % uTransport % array(:,:) &
+                    = block_d % provis_state % normalVelocity % array(:,:) &
+                    + block_d % provis_state % uBolusGM   % array(:,:)
+              !$OMP END TASK
 
               block => block % next
            end do
+           !$OMP TASKWAIT
         end if
         call mpas_timer_stop("RK4-update diagnostic variables")
 
@@ -228,22 +239,26 @@ module ocn_time_integration_rk4
         call mpas_timer_start("RK4-RK4 accumulate update")
         block => domain % blocklist
         do while (associated(block))
-           block % state % time_levs(2) % state % normalVelocity % array(:,:) = block % state % time_levs(2) % state % normalVelocity % array(:,:) &
-                                   + rk_weights(rk_step) * block % tend % normalVelocity % array(:,:) 
+           block_d = block
+           !$OMP TASK FIRSTPRIVATE(block_d)
+           block_d % state % time_levs(2) % state % normalVelocity % array(:,:) = block_d % state % time_levs(2) % state % normalVelocity % array(:,:) &
+                                   + rk_weights(rk_step) * block_d % tend % normalVelocity % array(:,:) 
 
-           block % state % time_levs(2) % state % layerThickness % array(:,:) = block % state % time_levs(2) % state % layerThickness % array(:,:) &
-                                   + rk_weights(rk_step) * block % tend % layerThickness % array(:,:) 
+           block_d % state % time_levs(2) % state % layerThickness % array(:,:) = block_d % state % time_levs(2) % state % layerThickness % array(:,:) &
+                                   + rk_weights(rk_step) * block_d % tend % layerThickness % array(:,:) 
 
-           do iCell=1,block % mesh % nCells
-              do k=1,block % mesh % maxLevelCell % array(iCell)
-                 block % state % time_levs(2) % state % tracers % array(:,k,iCell) =  &
-                                                                        block % state % time_levs(2) % state % tracers % array(:,k,iCell) &
-                                                                        + rk_weights(rk_step) * block % tend % tracers % array(:,k,iCell)
+           do iCell=1,block_d % mesh % nCells
+              do k=1,block_d % mesh % maxLevelCell % array(iCell)
+                 block_d % state % time_levs(2) % state % tracers % array(:,k,iCell) =  &
+                                                                        block_d % state % time_levs(2) % state % tracers % array(:,k,iCell) &
+                                                                        + rk_weights(rk_step) * block_d % tend % tracers % array(:,k,iCell)
               end do
            end do
+           !$OMP END TASK
 
            block => block % next
         end do
+        !$OMP TASKWAIT
         call mpas_timer_stop("RK4-RK4 accumulate update")
 
       end do
@@ -260,18 +275,23 @@ module ocn_time_integration_rk4
       ! Rescale tracers
       block => domain % blocklist
       do while(associated(block))
-        do iCell = 1, block % mesh % nCells
-          do k = 1, block % mesh % maxLevelCell % array(iCell)
-            block % state % time_levs(2) % state % tracers % array(:, k, iCell) = block % state % time_levs(2) % state % tracers % array(:, k, iCell) &
-                                                                                / block % state % time_levs(2) % state % layerThickness % array(k, iCell)
+        block_d = block
+        !$OMP TASK FIRSTPRIVATE(block_d)
+        do iCell = 1, block_d % mesh % nCells
+          do k = 1, block_d % mesh % maxLevelCell % array(iCell)
+            block_d % state % time_levs(2) % state % tracers % array(:, k, iCell) = block_d % state % time_levs(2) % state % tracers % array(:, k, iCell) &
+                                                                                / block_d % state % time_levs(2) % state % layerThickness % array(k, iCell)
           end do
         end do
+        !$OMP END TASK
         block => block % next
       end do
+      !$OMP TASKWAIT
 
       call mpas_timer_start("RK4-implicit vert mix")
       block => domain % blocklist
       do while(associated(block))
+        block_d = block
 
         ! Call ocean diagnostic solve in preparation for vertical mixing.  Note 
         ! it is called again after vertical mixing, because u and tracers change.
@@ -279,11 +299,14 @@ module ocn_time_integration_rk4
         ! be computed.  For kpp, more variables may be needed.  Either way, this
         ! could be made more efficient by only computing what is needed for the
         ! implicit vmix routine that follows. 
-        call ocn_diagnostic_solve(dt, block % state % time_levs(2) % state, block % mesh, block % scratch)
+        !$OMP TASK FIRSTPRIVATE(block_d)
+        call ocn_diagnostic_solve(dt, block_d % state % time_levs(2) % state, block_d % mesh, block % scratch)
 
-        call ocn_vmix_implicit(dt, block % mesh, block % diagnostics, block % state % time_levs(2) % state, err)
+        call ocn_vmix_implicit(dt, block_d % mesh, block_d % diagnostics, block_d % state % time_levs(2) % state, err)
+        !$OMP END TASK
         block => block % next
       end do
+      !$OMP TASKWAIT
 
       ! Update halo on u and tracers, which were just updated for implicit vertical mixing.  If not done, 
       ! this leads to lack of volume conservation.  It is required because halo updates in RK4 are only
@@ -298,6 +321,8 @@ module ocn_time_integration_rk4
 
       block => domain % blocklist
       do while (associated(block))
+         block_d = block
+         !$OMP TASK FIRSTPRIVATE(block_d)
          if (config_prescribe_velocity) then
             block % state % time_levs(2) % state % normalVelocity % array(:,:) = block % state % time_levs(1) % state % normalVelocity % array(:,:)
          end if
@@ -322,9 +347,11 @@ module ocn_time_integration_rk4
                          )
 
          call ocn_time_average_accumulate(block % state % time_levs(2) % state, block % state % time_levs(1) % state)
+         !$OMP END TASK
 
          block => block % next
       end do
+      !$OMP TASKWAIT
       call mpas_timer_stop("RK4-cleaup phase")
 
       call mpas_deallocate_provis_state(domain % blocklist)

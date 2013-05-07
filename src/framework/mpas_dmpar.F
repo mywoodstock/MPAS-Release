@@ -115,6 +115,10 @@ include 'mpif.h'
       type (dm_info), intent(inout) :: dminfo !< Input/Output: Domain information
       integer, intent(in), optional :: mpi_comm !< Input - Optional: externally-supplied MPI communicator
 
+#ifdef MPAS_OPENMP
+      integer :: openmp_threading
+#endif
+
 #ifdef _MPI
       integer :: mpi_rank, mpi_size
       integer :: mpi_ierr
@@ -123,7 +127,11 @@ include 'mpif.h'
          dminfo % comm = mpi_comm
          dminfo % using_external_comm = .true.
       else
+#ifdef MPAS_OPENMP
+         call MPI_Init_thread(MPI_THREAD_SINGLE, openmp_threading, mpi_ierr)
+#else
          call MPI_Init(mpi_ierr)
+#endif
          dminfo % comm = MPI_COMM_WORLD
          dminfo % using_external_comm = .false.
       end if

@@ -113,6 +113,7 @@ gfortran:
 	"CORE = $(CORE)" \
 	"DEBUG = $(DEBUG)" \
 	"USE_PAPI = $(USE_PAPI)" \
+	"OPENMP_FLAG = -fopenmp" \
 	"CPPFLAGS = $(MODEL_FORMULATION) -D_MPI -DUNDERSCORE" )
 
 g95:
@@ -261,6 +262,16 @@ else
 	TAU_MESSAGE="TAU Hooks are off."
 endif
 
+ifeq "$(OPENMP)" "true"
+	override CFLAGS += $(OPENMP_FLAG)
+	override FFLAGS += $(OPENMP_FLAG)
+	override LDFLAGS += $(OPENMP_FLAG)
+	override CPPFLAGS += -DMPAS_OPENMP
+	OPENMP_MESSAGE="OpenMP is on."
+else
+	OPENMP_MESSAGE="OpenMP is off."
+endif
+
 
 ifneq ($(wildcard .mpas_core_*), ) # CHECK FOR BUILT CORE
 
@@ -343,6 +354,7 @@ endif
 	@echo $(PARALLEL_MESSAGE)
 	@echo $(PAPI_MESSAGE)
 	@echo $(TAU_MESSAGE)
+	@echo $(OPENMP_MESSAGE)
 ifeq "$(AUTOCLEAN)" "true"
 	@echo $(AUTOCLEAN_MESSAGE)
 endif
