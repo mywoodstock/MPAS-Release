@@ -61,6 +61,7 @@ module mpas_core
    integer, parameter :: outputAlarmID = 1
    integer, parameter :: restartAlarmID = 2
    integer, parameter :: statsAlarmID = 3
+   integer, parameter :: coupleAlarmID = 4
 
    type (timer_node), pointer :: globalDiagTimer, timeIntTimer
    type (timer_node), pointer :: initDiagSolveTimer
