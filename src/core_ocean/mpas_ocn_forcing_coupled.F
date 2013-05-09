@@ -114,12 +114,12 @@ contains
 
       real (kind=RKIND) :: meridionalAverage, zonalAverage
       real (kind=RKIND), dimension(:), pointer :: angleEdge
-      real (kind=RKIND), dimension(:), pointer :: zonalWindStress, meridionalWindStress
+      real (kind=RKIND), dimension(:), pointer :: windStressZonal, windStressMeridional
       real (kind=RKIND), dimension(:), pointer :: latentHeatFlux, sensibleHeatFlux, longWaveHeatFluxUp, longWaveHeatFluxDown, evaporationFlux, seaIceHeatFlux, snowFlux
       real (kind=RKIND), dimension(:), pointer :: seaIceFreshWaterFlux, seaIceSalinityFlux, riverRunoffFlux, iceRunoffFlux
 
       real (kind=RKIND), dimension(:), pointer :: rainFlux
-      real (kind=RKIND), dimension(:), pointer :: seaLevelPressure, iceFraction
+      real (kind=RKIND), dimension(:), pointer :: seaSurfacePressure, iceFraction
 
       real (kind=RKIND), dimension(:), pointer :: surfaceMassFlux, surfaceWindStress
       real (kind=RKIND), dimension(:,:), pointer :: surfaceTracerFlux
@@ -133,9 +133,9 @@ contains
 
       cellsOnEdge => grid % cellsOnEdge % array
 
-      surfaceWindStress => state % surfaceWindStress % array
-      zonalWindStress => forcing % zonalWindStress % array
-      meridionalWindStress => forcing % meridionalWindStress % array
+      surfaceWindStress => forcing % surfaceWindStress % array
+      windStressZonal => forcing % windStressZonal % array
+      windStressMeridional => forcing % windStressMeridional % array
       latentHeatFlux => forcing % latentHeatFlux % array
       sensibleHeatFlux => forcing % sensibleHeatFlux % array
       longWaveHeatFluxUp => forcing % longWaveHeatFluxUp % array
@@ -151,7 +151,7 @@ contains
 
       rainFlux => forcing % rainFlux % array
 
-      seaLevelPressure => forcing % seaLevelPressure % array
+      seaSurfacePressure => forcing % seaSurfacePressure % array
       iceFraction => forcing % iceFraction % array
 
       surfaceWindStress => forcing % surfaceWindStress % array
@@ -163,8 +163,8 @@ contains
         cell1 = cellsOnEdge(1, iEdge)
         cell2 = cellsOnEdge(2, iEdge)
 
-        zonalAverage = 0.5 * (zonalWindStress(cell1) + zonalWindStress(cell2))
-        meridionalAverage = 0.5 * (meridionalWindStress(cell1) + meridionalWindStress(cell2))
+        zonalAverage = 0.5 * (windStressZonal(cell1) + windStressZonal(cell2))
+        meridionalAverage = 0.5 * (windStressMeridional(cell1) + windStressMeridional(cell2))
 
         surfaceWindStress(iEdge) = cos(angleEdge(iEdge)) * zonalAverage + sin(angleEdge(iEdge)) * meridionalAverage
       end do
@@ -177,15 +177,15 @@ contains
         surfaceTracerFlux(index_temperature_flux, iCell) = (latentHeatFlux(iCell) + sensibleHeatFlux(iCell) + longWaveHeatFluxUp(iCell) + longWaveHeatFluxDown(iCell) &
                                                            + seaIceHeatFlux(iCell) - (snowFlux(iCell) + iceRunoffFlux(iCell)) * latent_heat_fusion_mks) * hflux_factor
 
-        if(config_use_virtual_salinity_flux) then
-           surfaceTracerFlux(index_salinity_flux, iCell) = (rainFlux(iCell) + snowFlux(iCell) + evaporationFlux(iCell) + seaIceFreshWaterFlux(iCell) + riverRunoffFlux(iCell) + iceRunOffFlux(iCell)) * salinity_factor &
-                                                           + seaIceSalinityFlux(iCell) * sflux_factor
-           surfaceMassFlux(iCell) = 0.0_RKIND
-        else
+!       if(config_use_virtual_salinity_flux) then
+!          surfaceTracerFlux(index_salinity_flux, iCell) = (rainFlux(iCell) + snowFlux(iCell) + evaporationFlux(iCell) + seaIceFreshWaterFlux(iCell) + riverRunoffFlux(iCell) + iceRunOffFlux(iCell)) * salinity_factor &
+!                                                          + seaIceSalinityFlux(iCell) * sflux_factor
+!          surfaceMassFlux(iCell) = 0.0_RKIND
+!       else
            surfaceTracerFlux(index_salinity_flux, iCell) = seaIceSalinityFlux(iCell) * sflux_factor
 
            surfaceMassFlux(iCell) = snowFlux(iCell) + rainFlux(iCell) + evaporationFlux(iCell) + seaIceFreshWaterFlux(iCell) + iceRunoffFlux(iCell) + riverRunoffFlux(iCell)
-        end if
+!       end if
       end do
 
 #endif
