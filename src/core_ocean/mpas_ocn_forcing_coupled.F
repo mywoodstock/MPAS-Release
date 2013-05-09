@@ -133,7 +133,7 @@ contains
 
       cellsOnEdge => grid % cellsOnEdge % array
 
-      windStress => state % windStress % array
+      surfaceWindStress => state % surfaceWindStress % array
       zonalWindStress => forcing % zonalWindStress % array
       meridionalWindStress => forcing % meridionalWindStress % array
       latentHeatFlux => forcing % latentHeatFlux % array
