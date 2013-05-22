@@ -934,7 +934,7 @@
 		<var name="refBottomDepthTopOfCell" type="real" dimensions="nVertLevelsP1" units="m"
 		     description="Reference depth of ocean for each vertical interface. Used in 'z-level' type runs."
 		/>
-		<var name="vertCoordMovementWeights" type="real" dimensions="nVertLevels" streams="iro" units="unitless"
+		<var name="vertCoordMovementWeights" type="real" dimensions="nVertLevels" streams="ro" units="unitless"
 		     description="Weights used for distribution of sea surface heigh purturbations through multiple vertical levels."
 		/>
 		<var name="boundaryEdge" type="integer" dimensions="nVertLevels nEdges" units="unitless"
@@ -1028,7 +1028,7 @@
                  description="Flux of salinity through the ocean surface"
             />
         </var_array>
-		<var name="seaSurfacePressure" type="real" dimensions="nCells Time" streams="ir" units="Pa"
+		<var name="seaSurfacePressure" type="real" dimensions="nCells Time" streams="r" units="Pa"
 		     description="Pressure defined at the sea surface."
 		/>
 #ifdef MPAS_CESM
