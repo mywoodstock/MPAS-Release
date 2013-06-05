@@ -204,6 +204,8 @@ contains
                   
       normalVelocityForcing => grid % normalVelocityForcing % array
 
+      surfaceWindStress => f % surfaceWindStress % array
+
       !
       ! velocity tendency: start accumulating tendency terms
       !
