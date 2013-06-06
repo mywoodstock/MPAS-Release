@@ -35,6 +35,7 @@ module ocn_time_integration_split
    use ocn_equation_of_state
    use ocn_vmix
    use ocn_time_average
+   use ocn_time_average_coupled
 
    implicit none
    private
@@ -987,6 +988,7 @@ module ocn_time_integration_split
                          )
 
          call ocn_time_average_accumulate(block % state % time_levs(2) % state, block % state % time_levs(1) % state)
+         call ocn_time_average_coupled_accumulate(block % state % time_levs(2) % state, block % forcing)
 
          block => block % next
       end do
