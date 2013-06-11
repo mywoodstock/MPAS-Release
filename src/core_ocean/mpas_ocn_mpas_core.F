@@ -52,6 +52,8 @@ module mpas_core
 
    use ocn_forcing
 
+   use ocn_constants
+
    type (io_output_object), save :: restart_obj
 
    integer :: current_outfile_frames
@@ -144,6 +146,8 @@ module mpas_core
 
       call ocn_global_diagnostics_init(dminfo,err_tmp)
       err = ior(err, err_tmp)
+
+      call ocn_constants_init()
 
       call mpas_timer_init(domain)
 

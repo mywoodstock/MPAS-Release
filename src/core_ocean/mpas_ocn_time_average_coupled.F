@@ -21,6 +21,7 @@
 module ocn_time_average_coupled
 
     use mpas_grid_types
+    use ocn_constants
 
     implicit none
     save
@@ -54,7 +55,7 @@ module ocn_time_average_coupled
         salinityState(:) = 0.0_RKIND
         zonalVelocityState(:) = 0.0_RKIND
         meridionalVelocityState(:) = 0.0_RKIND
-        forcing % nAccumulateCoupled % scalar = 0
+        forcing % nAccumulatedCoupled % scalar = 0
 #endif
 
     end subroutine ocn_time_average_coupled_init!}}}
@@ -93,11 +94,12 @@ module ocn_time_average_coupled
         zonalVelocityState => forcing % zonalVelocityState % array
         meridionalVelocityState => forcing % meridionalVelocityState % array
 
-        temperatureState(:) = temperatureState(:) + tracers(index_temperature, 1, :)
+        write(0,*) 'Tk = ', T0_Kelvin
+        temperatureState(:) = temperatureState(:) + tracers(index_temperature, 1, :) + T0_Kelvin
         salinityState(:) = salinityState(:) + tracers(index_salinity, 1, :)
         zonalVelocityState(:) = zonalVelocityState(:) + zonalVelocity(1, :)
         meridionalVelocityState(:) = meridionalVelocityState(:) + meridionalVelocity(1, :)
-        forcing % nAccumulateCoupled % scalar = forcing % nAccumulateCoupled % scalar + 1
+        forcing % nAccumulatedCoupled % scalar = forcing % nAccumulatedCoupled % scalar + 1
 #endif
 
     end subroutine ocn_time_average_coupled_accumulate!}}}
@@ -125,12 +127,12 @@ module ocn_time_average_coupled
         zonalVelocityState => forcing % zonalVelocityState % array
         meridionalVelocityState => forcing % meridionalVelocityState % array
 
-        if(forcing % nAccumulateCoupled > 0) then
-           temperatureState(:) = temperatureState(:) / forcing % nAccumulateCoupled % scalar
-           salinityState(:) = salinityState(:) / forcing % nAccumulateCoupled % scalar
-           zonalVelocityState(:) = zonalVelocityState(:) / forcing % nAccumulateCoupled % scalar
-           meridionalVelocityState(:) = meridionalVelocityState(:) / forcing % nAccumulateCoupled % scalar
-           forcing % nAccumulateCoupled = 0
+        if(forcing % nAccumulatedCoupled % scalar > 0) then
+           temperatureState(:) = temperatureState(:) / forcing % nAccumulatedCoupled % scalar
+           salinityState(:) = salinityState(:) / forcing % nAccumulatedCoupled % scalar
+           zonalVelocityState(:) = zonalVelocityState(:) / forcing % nAccumulatedCoupled % scalar
+           meridionalVelocityState(:) = meridionalVelocityState(:) / forcing % nAccumulatedCoupled % scalar
+           forcing % nAccumulatedCoupled % scalar = 0
         end if
 #endif
 
