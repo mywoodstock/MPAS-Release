@@ -1092,6 +1092,19 @@
 			     description="salinity"
 			/>
 		</var_array>
+
+		<var name="ddensityTopOfCell" persistence="scratch" type="real" dimensions="nVertLevelsP1 nCells"
+			 description="dRho top of cell"
+	    />
+		<var name="ddensityTopOfEdge" persistence="scratch" type="real" dimensions="nVertLevelsP1 nEdges"
+			 description="dRho top of edge"
+	    />
+		<var name="du2TopOfCell" persistence="scratch" type="real" dimensions="nVertLevelsP1 nCells"
+			 description="dVel^2 top of cell"
+	    />
+		<var name="du2TopOfEdge" persistence="scratch" type="real" dimensions="nVertLevelsP1 nEdges"
+			 description="dVel^2 top of edge"
+	    />
 			 
     </var_struct>
 </registry>

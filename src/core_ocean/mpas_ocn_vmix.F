@@ -80,7 +80,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_vmix_coefs(grid, s, d, err)!{{{
+   subroutine ocn_vmix_coefs(grid, s, d, scratch, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -102,6 +102,8 @@ contains
 
       type (diagnostics_type), intent(inout) :: &
          d             !< Input/Output: diagnostic information
+
+      type (scratch_type), intent(inout) :: scratch !< Input/Output: Scratch structure
 
       !-----------------------------------------------------------------
       !
@@ -132,7 +134,7 @@ contains
 
       call ocn_vmix_coefs_const_build(grid, s, d, err1)
       call ocn_vmix_coefs_tanh_build(grid, s, d, err2)
-      call ocn_vmix_coefs_rich_build(grid, s, d, err3)
+      call ocn_vmix_coefs_rich_build(grid, s, d, scratch, err3)
 
       err = ior(err1, ior(err2, err3))
 
@@ -222,6 +224,7 @@ contains
       allocate(A(nVertLevels),B(nVertLevels),C(nVertLevels),velTemp(nVertLevels)) 
       A(1)=0
 
+      !$OMP DO PRIVATE(N, cell1, cell2, k)
       do iEdge=1,nEdges
         N=maxLevelEdgeTop(iEdge)
         if (N.gt.0) then
@@ -267,6 +270,7 @@ contains
 
         end if
       end do
+      !$OMP END DO
 
       deallocate(A,B,C,velTemp)
 
@@ -348,6 +352,7 @@ contains
 
       allocate(A(nVertLevels),B(nVertLevels),C(nVertLevels),tracersTemp(num_tracers,nVertLevels))
 
+      !$OMP DO PRIVATE(N, k)
       do iCell=1,nCells
          ! Compute A(k), B(k), C(k) for tracers
          N = maxLevelCell(iCell)
@@ -377,6 +382,7 @@ contains
          tracers(:,1:N,iCell) = tracersTemp(:,1:N)
          tracers(:,N+1:nVertLevels,iCell) = -1e34
       end do
+      !$OMP END DO
 
       deallocate(A,B,C,tracersTemp)
 
@@ -398,11 +404,12 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_vmix_implicit(dt, grid, diagnostics, state, err)!{{{
+   subroutine ocn_vmix_implicit(dt, grid, diagnostics, state, scratch, err)!{{{
       real (kind=RKIND), intent(in) :: dt
       type (mesh_type), intent(in) :: grid
       type (diagnostics_type), intent(inout) :: diagnostics
       type (state_type), intent(inout) :: state
+      type (scratch_type), intent(inout) :: scratch !< Input/Output: Scratch structure
       integer, intent(out) :: err
 
       integer :: nCells
@@ -423,7 +430,7 @@ contains
                
       nCells      = grid % nCells
 
-      call ocn_vmix_coefs(grid, state, diagnostics, err)
+      call ocn_vmix_coefs(grid, state, diagnostics, scratch, err)
 
       !
       !  Implicit vertical solve for momentum

@@ -944,7 +944,7 @@ module ocn_time_integration_split
         ! implicit vmix routine that follows.
         call ocn_diagnostic_solve(dt, block % state % time_levs(2) % state, block % mesh, block % scratch)
 
-        call ocn_vmix_implicit(dt, block % mesh, block % diagnostics, block % state % time_levs(2) % state, err)
+        call ocn_vmix_implicit(dt, block % mesh, block % diagnostics, block % state % time_levs(2) % state, block % scratch, err)
 
         block => block % next
       end do

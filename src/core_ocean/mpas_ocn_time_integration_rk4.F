@@ -320,9 +320,7 @@ module ocn_time_integration_rk4
         ! implicit vmix routine that follows. 
         call ocn_diagnostic_solve(dt, block % state % time_levs(2) % state, block % mesh, block % scratch)
 
-        !$OMP MASTER
-        call ocn_vmix_implicit(dt, block % mesh, block % diagnostics, block % state % time_levs(2) % state, err)
-        !$OMP END MASTER
+        call ocn_vmix_implicit(dt, block % mesh, block % diagnostics, block % state % time_levs(2) % state, block % scratch, err)
         !$OMP BARRIER
         block => block % next
       end do

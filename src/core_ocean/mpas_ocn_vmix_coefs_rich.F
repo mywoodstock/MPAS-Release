@@ -74,7 +74,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_vmix_coefs_rich_build(grid, s, d, err)!{{{
+   subroutine ocn_vmix_coefs_rich_build(grid, s, d, scratch, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -96,6 +96,8 @@ contains
 
       type (diagnostics_type), intent(inout) :: &
          d             !< Input/Output: diagnostic information
+
+      type (scratch_type), intent(inout) :: scratch !< Input/Output: Scratch structure
 
       !-----------------------------------------------------------------
       !
@@ -146,12 +148,15 @@ contains
       tracers => s % tracers % array
 
       call mpas_timer_start("eos rich", .false., richEOSTimer)
+      !$OMP MASTER
       call ocn_equation_of_state_density(s, grid, 0,'relative', err)
       call ocn_equation_of_state_density(s, grid, 1,'relative', err)
+      !$OMP END MASTER
+      !$OMP BARRIER
       call mpas_timer_stop("eos rich", richEOSTimer)
 
       call ocn_vmix_get_rich_numbers(grid, indexT, indexS, normalVelocity, layerThickness, layerThicknessEdge, & 
-                                  density, displacedDensity, tracers, RiTopOfEdge, RiTopOfCell, err1)
+                                  density, displacedDensity, tracers, RiTopOfEdge, RiTopOfCell, scratch, err1)
 
       call ocn_vel_vmix_coefs_rich(grid, RiTopOfEdge, layerThicknessEdge, vertViscTopOfEdge, err2)
       call ocn_tracer_vmix_coefs_rich(grid, RiTopOfCell, layerThickness, vertDiffTopOfCell, err3)
@@ -225,6 +230,7 @@ contains
 
       maxLevelEdgeTop => grid % maxLevelEdgeTop % array
 
+      !$OMP DO PRIVATE(k)
       do iEdge = 1,nEdges
          do k = 2,maxLevelEdgeTop(iEdge)
             ! efficiency note: these if statements are inside iEdge and k loops.
@@ -241,6 +247,7 @@ contains
             end if
          end do
       end do
+      !$OMP END DO
 
 
    !--------------------------------------------------------------------
@@ -313,6 +320,7 @@ contains
       maxLevelCell => grid % maxLevelCell % array
 
       coef = -gravity/config_density0/2.0
+      !$OMP DO PRIVATE(k)
       do iCell = 1,nCells
          do k = 2,maxLevelCell(iCell)
             ! efficiency note: these if statements are inside iEdge and k loops.
@@ -331,6 +339,7 @@ contains
             end if
          end do
       end do
+      !$OMP END DO
 
 
    !--------------------------------------------------------------------
@@ -351,7 +360,7 @@ contains
 !-----------------------------------------------------------------------
 
    subroutine ocn_vmix_get_rich_numbers(grid, indexT, indexS, normalVelocity, layerThickness, layerThicknessEdge, & !{{{
-                                 density, displacedDensity, tracers, RiTopOfEdge, RiTopOfCell, err)
+                                 density, displacedDensity, tracers, RiTopOfEdge, RiTopOfCell, scratch, err)
 
       !-----------------------------------------------------------------
       !
@@ -388,6 +397,8 @@ contains
       real (kind=RKIND), dimension(:,:), intent(inout) :: RiTopOfEdge     !< Input/output: Richardson number top of cell
       real (kind=RKIND), dimension(:,:), intent(inout) :: RiTopOfCell     !< Input/output: Richardson number top of cell
 
+      type (scratch_type), intent(inout) :: scratch !< Input/Output: Scratch structure
+
       integer, intent(inout) :: err !< Output: error flag
 
       !-----------------------------------------------------------------
@@ -404,7 +415,7 @@ contains
 
       real (kind=RKIND) :: coef, invAreaCell
       real (kind=RKIND), dimension(:), pointer :: dcEdge, dvEdge, areaCell
-      real (kind=RKIND), dimension(:,:), allocatable :: ddensityTopOfCell, du2TopOfCell, &
+      real (kind=RKIND), dimension(:,:), pointer :: ddensityTopOfCell, du2TopOfCell, &
                                                         ddensityTopOfEdge, du2TopOfEdge
 
       err = 0
@@ -426,20 +437,42 @@ contains
       edgesOnCell => grid % edgesOnCell % array
       edgeSignOnCell => grid % edgeSignOnCell % array
 
-      allocate( &
-         ddensityTopOfCell(nVertLevels+1,nCells+1), ddensityTopOfEdge(nVertLevels+1,nEdges), &
-         du2TopOfCell(nVertLevels+1,nCells+1), du2TopOfEdge(nVertLevels+1,nEdges))
+!     allocate( &
+!        ddensityTopOfCell(nVertLevels+1,nCells+1), ddensityTopOfEdge(nVertLevels+1,nEdges), &
+!        du2TopOfCell(nVertLevels+1,nCells+1), du2TopOfEdge(nVertLevels+1,nEdges))
+
+      !$OMP MASTER
+      call mpas_allocate_scratch_field(scratch % ddensityTopOfCell, .true.)
+      call mpas_allocate_scratch_field(scratch % ddensityTopOfEdge, .true.)
+      call mpas_allocate_scratch_field(scratch % du2TopOfCell, .true.)
+      call mpas_allocate_scratch_field(scratch % du2TopOfEdge, .true.)
+      !$OMP END MASTER
+      !$OMP BARRIER
+
+      ddensityTopOfCell => scratch % ddensityTopOfCell % array
+      ddensityTopOfEdge => scratch % ddensityTopOfEdge % array
+      du2TopOfCell => scratch % du2TopOfCell % array
+      du2TopOfEdge => scratch % du2TopOfEdge % array
 
       ! ddensityTopOfCell(k) = $\density^*_{k-1}-\density^*_k$
+      !$OMP WORKSHARE
       ddensityTopOfCell = 0.0
+      !$OMP END WORKSHARE
+
+      !$OMP DO PRIVATE(k)
       do iCell=1,nCells
          do k=2,maxLevelCell(iCell)
             ddensityTopOfCell(k,iCell) = displacedDensity(k-1,iCell) - displacedDensity(k,iCell)
           end do
       end do
+      !$OMP END DO
 
       ! interpolate ddensityTopOfCell to ddensityTopOfEdge
+      !$OMP WORKSHARE
       ddensityTopOfEdge = 0.0
+      !$OMP END WORKSHARE
+    
+      !$OMP DO PRIVATE(cell1, cell2, k)
       do iEdge=1,nEdges
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
@@ -449,17 +482,27 @@ contains
                 ddensityTopOfCell(k,cell2))/2  
          end do
        end do
+       !$OMP END DO
 
       ! du2TopOfEdge(k) = $u_{k-1}-u_k$
+      !$OMP WORKSHARE
       du2TopOfEdge=0.0
+      !$OMP END WORKSHARE
+
+      !$OMP DO PRIVATE(k)
       do iEdge=1,nEdges
          do k=2,maxLevelEdgeTop(iEdge)
             du2TopOfEdge(k,iEdge) = (normalVelocity(k-1,iEdge) - normalVelocity(k,iEdge))**2
          end do
       end do
+      !$OMP END DO
 
       ! interpolate du2TopOfEdge to du2TopOfCell
+      !$OMP WORKSHARE
       du2TopOfCell = 0.0
+      !$OMP END WORKSHARE
+
+      !$OMP DO PRIVATE(invAreaCell, i, iEdge, k)
       do iCell = 1, nCells
         invAreaCell = 1.0 / areaCell(iCell)
         do i = 1, nEdgesOnCell(iCell)
@@ -470,11 +513,16 @@ contains
           end do
         end do
       end do
+      !$OMP END DO
 
       ! compute RiTopOfEdge using ddensityTopOfEdge and du2TopOfEdge
       ! coef = -g/density_0/2
+      !$OMP WORKSHARE
       RiTopOfEdge = 0.0
+      !$OMP END WORKSHARE
       coef = -gravity/config_density0/2.0
+
+      !$OMP DO PRIVATE(k)
       do iEdge = 1,nEdges
          do k = 2,maxLevelEdgeTop(iEdge)
             RiTopOfEdge(k,iEdge) = coef*ddensityTopOfEdge(k,iEdge) &
@@ -482,10 +530,15 @@ contains
                / (du2TopOfEdge(k,iEdge) + 1e-20)
          end do
       end do
+      !$OMP END DO
 
       ! compute RiTopOfCell using ddensityTopOfCell and du2TopOfCell
       ! coef = -g/density_0/2
+      !$OMP WORKSHARE
       RiTopOfCell = 0.0
+      !$OMP END WORKSHARE
+
+      !$OMP DO PRIVATE(k)
       do iCell = 1,nCells
          do k = 2,maxLevelCell(iCell)
             RiTopOfCell(k,iCell) = coef*ddensityTopOfCell(k,iCell) &
@@ -493,9 +546,19 @@ contains
                / (du2TopOfCell(k,iCell) + 1e-20)
          end do
       end do
+      !$OMP END DO
 
-      deallocate(ddensityTopOfCell, ddensityTopOfEdge, &
-        du2TopOfCell, du2TopOfEdge)
+!     deallocate(ddensityTopOfCell, ddensityTopOfEdge, &
+!       du2TopOfCell, du2TopOfEdge)
+
+      !$OMP BARRIER
+      !$OMP MASTER
+      call mpas_deallocate_scratch_field(scratch % ddensityTopOfCell, .true.)
+      call mpas_deallocate_scratch_field(scratch % ddensityTopOfEdge, .true.)
+      call mpas_deallocate_scratch_field(scratch % du2TopOfCell, .true.)
+      call mpas_deallocate_scratch_field(scratch % du2TopOfEdge, .true.)
+      !$OMP END MASTER
+      !$OMP BARRIEr
 
    !--------------------------------------------------------------------
 
