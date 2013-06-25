@@ -179,10 +179,10 @@ module ocn_time_integration_rk4
               block % provis_state % layerThicknessEdge % array, &
               block % provis_state % uTransport % array, block % provis_state % vertTransportVelocityTop % array, err)
 
-           !$OMP BARRIER
-           !$OMP MASTER
            call ocn_tend_thick(block % tend, block % provis_state, block % mesh)
 
+           !$OMP BARRIER
+           !$OMP MASTER
            if (config_filter_btr_mode) then
                call ocn_filter_btr_mode_tend_vel(block % tend, block % provis_state, block % mesh)
            endif

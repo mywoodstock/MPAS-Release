@@ -109,7 +109,9 @@ contains
       !
       ! height tendency: start accumulating tendency terms
       !
+      !$OMP WORKSHARE
       tend_layerThickness = 0.0
+      !$OMP END WORKSHARE
 
       if(config_disable_thick_all_tend) return
 

@@ -142,6 +142,7 @@ contains
       edgesOnCell => grid % edgesOnCell % array
       edgeSignOnCell => grid % edgeSignOnCell % array
 
+      !$OMP DO PRIVATE(invAreaCell, i, iEdge, k, flux)
       do iCell = 1, nCells
         invAreaCell = 1.0 / areaCell(iCell)
         do i = 1, nEdgesOnCell(iCell)
@@ -152,6 +153,7 @@ contains
           end do
         end do
       end do
+      !$OMP END DO
 
    !--------------------------------------------------------------------
 

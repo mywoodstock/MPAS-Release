@@ -124,11 +124,13 @@ contains
       nCells = grid % nCells
       nVertLevels = grid % nVertLevels
 
+      !$OMP DO PRIVATE(k)
       do iCell=1,nCells
          do k=1,maxLevelCell(iCell)
             tend(k,iCell) = tend(k,iCell) + vertTransportVelocityTop(k+1,iCell) - vertTransportVelocityTop(k,iCell)
          end do
       end do
+      !$OMP END DO
 
    !--------------------------------------------------------------------
 
