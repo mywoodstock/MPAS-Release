@@ -1072,5 +1072,18 @@
                      type="real" dimensions="nVertLevels nCells Time" units="m^2 s^{-2}"
 		     description="kinetic energy of horizonal velocity defined at vertices"
 		/>
+		<var name="delsq_u" persistence="scratch" type="real" dimensions="nVertLevels nEdges"
+			 description="Del2 on velocity. For application of Del4 momentum operator"
+		/>
+		<var name="delsq_divergence" persistence="scratch" type="real" dimensions="nVertLevels nCells"
+			 description="Del2 on divergence. For application of Del4 momentum operator"
+		/>
+		<var name="delsq_relativeVorticity" persistence="scratch" type="real" dimensions="nVertLevels nVertices"
+			 description="Del2 on relativeVorticity. For application of Del4 momentum operator"
+		/>
+		<var name="normalThicknessFlux" persistence="scratch" type="real" dimensions="nVertLevels nEdges"
+			 description="Thickness flux at edges" units="m^2 s^{-1}"
+		/>
+			 
     </var_struct>
 </registry>

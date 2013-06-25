@@ -99,7 +99,9 @@ module ocn_time_integration_rk4
       real (kind=RKIND), dimension(:), allocatable:: A,C,uTemp
       real (kind=RKIND), dimension(:,:), allocatable:: tracersTemp
 
+      !$OMP MASTER
       call mpas_setup_provis_state(domain % blocklist)
+      !$OMP END MASTER
 
       !
       ! Initialize time_levs(2) with state at current time
@@ -109,19 +111,28 @@ module ocn_time_integration_rk4
       !
       block => domain % blocklist
       do while (associated(block))
+        !$OMP WORKSHARE
         block % state % time_levs(2) % state % normalVelocity % array(:,:) = block % state % time_levs(1) % state % normalVelocity % array(:,:)
         block % state % time_levs(2) % state % layerThickness % array(:,:) = block % state % time_levs(1) % state % layerThickness % array(:,:)
+        !$OMP END WORKSHARE
+
+        !$OMP DO PRIVATE(k)
         do iCell=1,block % mesh % nCells  ! couple tracers to h
           do k=1,block % mesh % maxLevelCell % array(iCell)
             block % state % time_levs(2) % state % tracers % array(:,k,iCell) = block % state % time_levs(1) % state % tracers % array(:,k,iCell) &
                                                                       * block % state % time_levs(1) % state % layerThickness % array(k,iCell)
            end do
         end do
+        !$OMP END DO
 
+        !$OMP MASTER
         call mpas_copy_state(block % provis_state, block % state % time_levs(1) % state)
+        !$OMP END MASTER
+        !$OMP BARRIER
 
         block => block % next
       end do
+
 
       rk_weights(1) = dt/6.
       rk_weights(2) = dt/3.
@@ -142,11 +153,15 @@ module ocn_time_integration_rk4
 ! ---  update halos for diagnostic variables
 
         call mpas_timer_start("RK4-diagnostic halo update")
+        !$OMP BARRIER
+        !$OMP MASTER
         call mpas_dmpar_exch_halo_field(domain % blocklist % provis_state % normalizedRelativeVorticityEdge)
         if (config_mom_del4 > 0.0) then
            call mpas_dmpar_exch_halo_field(domain % blocklist % provis_state % divergence)
            call mpas_dmpar_exch_halo_field(domain % blocklist % provis_state % relativeVorticity)
         end if
+        !$OMP END MASTER
+        !$OMP BARRIER
         call mpas_timer_stop("RK4-diagnostic halo update")
 
 ! ---  compute tendencies
@@ -158,11 +173,18 @@ module ocn_time_integration_rk4
            call ocn_vert_transport_velocity_top(block % mesh, block % provis_state % layerThickness % array, &
               block % provis_state % layerThicknessEdge % array, &
               block % provis_state % normalVelocity % array, block % provis_state % vertTransportVelocityTop % array, err)
+           !$OMP BARRIER
+           !$OMP MASTER
            call ocn_tend_vel(block % tend, block % provis_state, block % diagnostics, block % mesh)
+           !$OMP END MASTER
+           !$OMP BARRIER
 
            call ocn_vert_transport_velocity_top(block % mesh, block % provis_state % layerThickness % array, &
               block % provis_state % layerThicknessEdge % array, &
               block % provis_state % uTransport % array, block % provis_state % vertTransportVelocityTop % array, err)
+
+           !$OMP BARRIER
+           !$OMP MASTER
            call ocn_tend_thick(block % tend, block % provis_state, block % mesh)
 
            if (config_filter_btr_mode) then
@@ -170,6 +192,8 @@ module ocn_time_integration_rk4
            endif
 
            call ocn_tend_tracer(block % tend, block % provis_state, block % diagnostics, block % mesh, dt)
+           !$OMP END MASTER
+           !$OMP BARRIER
            block => block % next
         end do
         call mpas_timer_stop("RK4-tendency computations")
@@ -177,9 +201,13 @@ module ocn_time_integration_rk4
 ! ---  update halos for prognostic variables
 
         call mpas_timer_start("RK4-pronostic halo update")
+        !$OMP BARRIER
+        !$OMP MASTER
         call mpas_dmpar_exch_halo_field(domain % blocklist % tend % normalVelocity)
         call mpas_dmpar_exch_halo_field(domain % blocklist % tend % layerThickness)
         call mpas_dmpar_exch_halo_field(domain % blocklist % tend % tracers)
+        !$OMP END MASTER
+        !$OMP BARRIER
         call mpas_timer_stop("RK4-pronostic halo update")
 
 ! ---  compute next substep state
@@ -189,11 +217,16 @@ module ocn_time_integration_rk4
            block => domain % blocklist
            do while (associated(block))
 
+              !$OMP WORKSHARE
               block % provis_state % normalVelocity % array(:,:) = block % state % time_levs(1) % state % normalVelocity % array(:,:)  &
                                                           + rk_substep_weights(rk_step) * block % tend % normalVelocity % array(:,:)
 
               block % provis_state % layerThickness % array(:,:) = block % state % time_levs(1) % state % layerThickness % array(:,:)  &
                                                     + rk_substep_weights(rk_step) * block % tend % layerThickness % array(:,:)
+
+              !$OMP END WORKSHARE
+
+              !$OMP DO PRIVATE(k)
               do iCell=1,block % mesh % nCells
                  do k=1,block % mesh % maxLevelCell % array(iCell)
                  block % provis_state % tracers % array(:,k,iCell) = ( block % state % time_levs(1) % state % layerThickness % array(k,iCell) * &
@@ -203,20 +236,28 @@ module ocn_time_integration_rk4
                  end do
 
               end do
+              !$OMP END DO
+
               if (config_prescribe_velocity) then
+                 !$OMP WORKSHARE
                  block % provis_state % normalVelocity % array(:,:) = block % state % time_levs(1) % state % normalVelocity % array(:,:)
+                 !$OMP END WORKSHARE
               end if
 
               if (config_prescribe_thickness) then
+                 !$OMP WORKSHARE
                  block % provis_state % layerThickness % array(:,:) = block % state % time_levs(1) % state % layerThickness % array(:,:)
+                 !$OMP END WORKSHARE
               end if
 
               call ocn_diagnostic_solve(dt, block % provis_state, block % mesh, block % scratch)
 
               ! Compute velocity transport, used in advection terms of layerThickness and tracer tendency
+              !$OMP WORKSHARE
               block % provis_state % uTransport % array(:,:) &
                     = block % provis_state % normalVelocity % array(:,:) &
                     + block % provis_state % uBolusGM   % array(:,:)
+              !$OMP END WORKSHARE
 
               block => block % next
            end do
@@ -228,12 +269,15 @@ module ocn_time_integration_rk4
         call mpas_timer_start("RK4-RK4 accumulate update")
         block => domain % blocklist
         do while (associated(block))
+           !$OMP WORKSHARE
            block % state % time_levs(2) % state % normalVelocity % array(:,:) = block % state % time_levs(2) % state % normalVelocity % array(:,:) &
                                    + rk_weights(rk_step) * block % tend % normalVelocity % array(:,:) 
 
            block % state % time_levs(2) % state % layerThickness % array(:,:) = block % state % time_levs(2) % state % layerThickness % array(:,:) &
                                    + rk_weights(rk_step) * block % tend % layerThickness % array(:,:) 
+           !$OMP END WORKSHARE
 
+           !$OMP DO PRIVATE(k)
            do iCell=1,block % mesh % nCells
               do k=1,block % mesh % maxLevelCell % array(iCell)
                  block % state % time_levs(2) % state % tracers % array(:,k,iCell) =  &
@@ -241,6 +285,7 @@ module ocn_time_integration_rk4
                                                                         + rk_weights(rk_step) * block % tend % tracers % array(:,k,iCell)
               end do
            end do
+           !$OMP END DO
 
            block => block % next
         end do
@@ -260,12 +305,14 @@ module ocn_time_integration_rk4
       ! Rescale tracers
       block => domain % blocklist
       do while(associated(block))
+        !$OMP DO PRIVATE(k)
         do iCell = 1, block % mesh % nCells
           do k = 1, block % mesh % maxLevelCell % array(iCell)
             block % state % time_levs(2) % state % tracers % array(:, k, iCell) = block % state % time_levs(2) % state % tracers % array(:, k, iCell) &
                                                                                 / block % state % time_levs(2) % state % layerThickness % array(k, iCell)
           end do
         end do
+        !$OMP END DO
         block => block % next
       end do
 
@@ -281,7 +328,10 @@ module ocn_time_integration_rk4
         ! implicit vmix routine that follows. 
         call ocn_diagnostic_solve(dt, block % state % time_levs(2) % state, block % mesh, block % scratch)
 
+        !$OMP MASTER
         call ocn_vmix_implicit(dt, block % mesh, block % diagnostics, block % state % time_levs(2) % state, err)
+        !$OMP END MASTER
+        !$OMP BARRIER
         block => block % next
       end do
 
@@ -290,8 +340,12 @@ module ocn_time_integration_rk4
       ! conducted on tendencies, not on the velocity and tracer fields.  So this update is required to 
       ! communicate the change due to implicit vertical mixing across the boundary.
       call mpas_timer_start("RK4-implicit vert mix halos")
+      !$OMP BARRIER
+      !$OMP MASTER
       call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % normalVelocity)
       call mpas_dmpar_exch_halo_field(domain % blocklist % state % time_levs(2) % state % tracers)
+      !$OMP END MASTER
+      !$OMP BARRIER
       call mpas_timer_stop("RK4-implicit vert mix halos")
 
       call mpas_timer_stop("RK4-implicit vert mix")
@@ -299,20 +353,27 @@ module ocn_time_integration_rk4
       block => domain % blocklist
       do while (associated(block))
          if (config_prescribe_velocity) then
+            !$OMP WORKSHARE
             block % state % time_levs(2) % state % normalVelocity % array(:,:) = block % state % time_levs(1) % state % normalVelocity % array(:,:)
+            !$OMP END WORKSHARE
          end if
 
          if (config_prescribe_thickness) then
+            !$OMP WORKSHARE
             block % state % time_levs(2) % state % layerThickness % array(:,:) = block % state % time_levs(1) % state % layerThickness % array(:,:)
+            !$OMP END WORKSHARE
          end if
 
          call ocn_diagnostic_solve(dt, block % state % time_levs(2) % state, block % mesh, block % scratch)
 
          ! Compute velocity transport, used in advection terms of layerThickness and tracer tendency
+         !$OMP WORKSHARE
             block % state % time_levs(2) % state % uTransport % array(:,:) &
           = block % state % time_levs(2) % state % normalVelocity % array(:,:) &
           + block % state % time_levs(2) % state % uBolusGM % array(:,:)
-
+         !$OMP END WORKSHARE
+        
+         !$OMP MASTER
          call mpas_reconstruct(block % mesh, block % state % time_levs(2) % state % normalVelocity % array,          &
                           block % state % time_levs(2) % state % normalVelocityX % array,            &
                           block % state % time_levs(2) % state % normalVelocityY % array,            &
@@ -322,12 +383,17 @@ module ocn_time_integration_rk4
                          )
 
          call ocn_time_average_accumulate(block % state % time_levs(2) % state, block % state % time_levs(1) % state)
+         !$OMP END MASTER
+         !$OMP BARRIER
 
          block => block % next
       end do
       call mpas_timer_stop("RK4-cleaup phase")
 
+      !$OMP MASTER
       call mpas_deallocate_provis_state(domain % blocklist)
+      !$OMP END MASTER
+      !$OMP BARRIER
 
    end subroutine ocn_time_integrator_rk4!}}}
 

@@ -101,6 +101,7 @@ module ocn_time_integration
          call ocn_time_integrator_split(domain, dt)
      endif
 
+     !$OMP MASTER
      block => domain % blocklist
      do while (associated(block))
         block % state % time_levs(2) % state % xtime % scalar = timeStamp
@@ -114,6 +115,8 @@ module ocn_time_integration
 
         block => block % next
      end do
+     !$OMP END MASTER
+     !$OMP BARRIER
 
    end subroutine ocn_timestep!}}}
 

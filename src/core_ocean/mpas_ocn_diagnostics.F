@@ -100,7 +100,7 @@ contains
       real (kind=RKIND) :: d2fdx2_cell1, d2fdx2_cell2, coef_3rd_order, r_tmp, &
         invAreaCell1, invAreaCell2, invAreaTri1, invAreaTri2, invLength, layerThicknessVertex, coef
 
-      real (kind=RKIND), dimension(:), allocatable:: pTop, div_hu
+      real (kind=RKIND), dimension(:), allocatable :: pTop, div_hu
 
       real (kind=RKIND), dimension(:), pointer :: &
         bottomDepth, fVertex, dvEdge, dcEdge, areaCell, areaTriangle, ssh, seaSurfacePressure
@@ -183,9 +183,12 @@ contains
       !
 
       ! initialize layerThicknessEdge to avoid divide by zero and NaN problems.
+      !$OMP WORKSHARE
       layerThicknessEdge = -1.0e34
+      !$OMP END WORKSHARE
       coef_3rd_order = config_coef_3rd_order
 
+      !$OMP DO PRIVATE(cell1, cell2, k)
       do iEdge=1,nEdges
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
@@ -193,11 +196,13 @@ contains
             layerThicknessEdge(k,iEdge) = 0.5 * (layerThickness(k,cell1) + layerThickness(k,cell2))
          end do
       end do
+      !$OMP END DO
 
       !
       ! set the velocity and height at dummy address
       !    used -1e34 so error clearly occurs if these values are used.
       !
+      !$OMP WORKSHARE
       normalVelocity(:,nEdges+1) = -1e34
       layerThickness(:,nCells+1) = -1e34
       tracers(s % index_temperature,:,nCells+1) = -1e34
@@ -209,6 +214,9 @@ contains
       vertVelocityTop(:,:)=0.0
       kineticEnergyCell(:,:) = 0.0
       tangentialVelocity(:,:) = 0.0
+      !$OMP END WORKSHARE
+
+      !$OMP DO PRIVATE(invAreaTri1, i, iEdge, k, r_tmp)
       do iVertex = 1, nVertices
          invAreaTri1 = 1.0 / areaTriangle(iVertex)
          do i = 1, vertexDegree
@@ -221,8 +229,13 @@ contains
             end do
          end do
       end do
+      !$OMP END DO
 
+      !$OMP WORKSHARE
       relativeVorticityCell(:,:) = 0.0
+      !$OMP END WORKSHARE
+
+      !$OMP DO PRIVATE(invAreaCell1, i, j, iVertex, k)
       do iCell = 1, nCells
         invAreaCell1 = 1.0 / areaCell(iCell)
 
@@ -234,8 +247,10 @@ contains
           end do
         end do
       end do
+      !$OMP END DO
 
       allocate(div_hu(nVertLevels))
+      !$OMP DO PRIVATE(invAreaCell1, i, iEdge, k, r_tmp)
       do iCell = 1, nCells
          div_hu(:) = 0.0
          invAreaCell1 = 1.0 / areaCell(iCell)
@@ -254,8 +269,10 @@ contains
             vertVelocityTop(k,iCell) = vertVelocityTop(k+1,iCell) - div_hu(k)
          end do         
       end do
+      !$OMP END DO
       deallocate(div_hu)
 
+      !$OMP DO PRIVATE(i, eoe, k)
       do iEdge=1,nEdges
          ! Compute v (tangential) velocities
          do i=1,nEdgesOnEdge(iEdge)
@@ -265,16 +282,25 @@ contains
             end do
          end do
       end do
+      !$OMP END DO
 
       !
       ! Compute kinetic energy
       !
+      !$OMP MASTER
       call mpas_allocate_scratch_field(scratch % kineticEnergyVertex, .true.)
       call mpas_allocate_scratch_field(scratch % kineticEnergyVertexOnCells, .true.)
+      !$OMP END MASTER
+      !$OMP BARRIER
       kineticEnergyVertex         => scratch % kineticEnergyVertex % array
       kineticEnergyVertexOnCells  => scratch % kineticEnergyVertexOnCells % array
+
+      !$OMP WORKSHARE
       kineticEnergyVertex(:,:) = 0.0; 
       kineticEnergyVertexOnCells(:,:) = 0.0
+      !$OMP END WORKSHARE
+
+      !$OMP DO PRIVATE(i, iEdge, r_tmp, k)
       do iVertex = 1, nVertices*ke_vertex_flag
         do i = 1, vertexDegree
           iEdge = edgesOnVertex(i, iVertex)
@@ -284,7 +310,9 @@ contains
           end do
         end do
       end do
+      !$OMP END DO
 
+      !$OMP DO PRIVATE(invAreaCell1, i, j, iVertex, k)
       do iCell = 1, nCells*ke_vertex_flag
         invAreaCell1 = 1.0 / areaCell(iCell)
         do i = 1, nEdgesOnCell(iCell)
@@ -295,27 +323,38 @@ contains
           end do
         end do
       end do
+      !$OMP END DO
 
       !
       ! Compute kinetic energy in each cell by blending kineticEnergyCell and kineticEnergyVertexOnCells
       !
+      !$OMP DO PRIVATE(k)
       do iCell=1,nCells*ke_vertex_flag
          do k=1,nVertLevels
             kineticEnergyCell(k,iCell) = 5.0/8.0*kineticEnergyCell(k,iCell) + 3.0/8.0*kineticEnergyVertexOnCells(k,iCell)
          end do
       end do
+      !$OMP END DO
 
+      !$OMP MASTER
       call mpas_deallocate_scratch_field(scratch % kineticEnergyVertex, .true.)
       call mpas_deallocate_scratch_field(scratch % kineticEnergyVertexOnCells, .true.)
+      !$OMP END MASTER
+      !$OMP BARRIER
 
 
       !
       ! Compute normalized relative and planetary vorticity
       !
+      !$OMP MASTER
       call mpas_allocate_scratch_field(scratch % normalizedRelativeVorticityVertex, .true.)
       call mpas_allocate_scratch_field(scratch % normalizedPlanetaryVorticityVertex, .true.)
+      !$OMP END MASTER
+      !$OMP BARRIER
       normalizedPlanetaryVorticityVertex  => scratch % normalizedPlanetaryVorticityVertex % array
       normalizedRelativeVorticityVertex  => scratch % normalizedRelativeVorticityVertex % array
+
+      !$OMP DO PRIVATE(invAreaTri1, k, layerThicknessVertex, i)
       do iVertex = 1,nVertices
          invAreaTri1 = 1.0 / areaTriangle(iVertex)
          do k=1,maxLevelVertexBot(iVertex)
@@ -329,9 +368,14 @@ contains
             normalizedPlanetaryVorticityVertex(k,iVertex) = fVertex(iVertex) / layerThicknessVertex
          end do
       end do
+      !$OMP END DO
 
+      !$OMP WORKSHARE
       normalizedRelativeVorticityEdge(:,:) = 0.0
       normalizedPlanetaryVorticityEdge(:,:) = 0.0
+      !$OMP END WORKSHARE
+
+      !$OMP DO PRIVATE(vertex1, vertex2, k)
       do iEdge = 1, nEdges
         vertex1 = verticesOnEdge(1, iEdge)
         vertex2 = verticesOnEdge(2, iEdge)
@@ -340,8 +384,13 @@ contains
           normalizedPlanetaryVorticityEdge(k, iEdge) = 0.5 * (normalizedPlanetaryVorticityVertex(k, vertex1) + normalizedPlanetaryVorticityVertex(k, vertex2))
         end do
       end do
+      !$OMP END DO
 
+      !$OMP WORKSHARE
       normalizedRelativeVorticityCell(:,:) = 0.0
+      !$OMP END WORKSHARE
+
+      !$OMP DO PRIVATE(invAreaCell1, i, j, iVertex, k)
       do iCell = 1, nCells
         invAreaCell1 = 1.0 / areaCell(iCell)
 
@@ -354,14 +403,20 @@ contains
           end do
         end do
       end do
+      !$OMP END DO
 
       ! Diagnostics required for the Anticipated Potential Vorticity Method (apvm).
       if (config_apvm_scale_factor>1e-10) then
 
+         !$OMP MASTER
          call mpas_allocate_scratch_field(scratch % vorticityGradientNormalComponent, .true.)
          call mpas_allocate_scratch_field(scratch % vorticityGradientTangentialComponent, .true.)
+         !$OMP END MASTER
+         !$OMP BARRIER
          vorticityGradientNormalComponent => scratch % vorticityGradientNormalComponent % array
          vorticityGradientTangentialComponent => scratch % vorticityGradientTangentialComponent % array
+
+         !$OMP DO PRIVATE(cell1, cell2, vertex1, vertex2, invLength, k)
          do iEdge = 1,nEdges
             cell1 = cellsOnEdge(1, iEdge)
             cell2 = cellsOnEdge(2, iEdge)
@@ -385,10 +440,12 @@ contains
             enddo
 
          enddo
+         !$OMP END DO
 
          !
          ! Modify PV edge with upstream bias.
          !
+         !$OMP DO PRIVATE(k)
          do iEdge = 1,nEdges
             do k = 1,maxLevelEdgeBot(iEdge)
               normalizedRelativeVorticityEdge(k,iEdge) = normalizedRelativeVorticityEdge(k,iEdge) &
@@ -397,12 +454,23 @@ contains
                      + tangentialVelocity(k,iEdge) * vorticityGradientTangentialComponent(k,iEdge) )
             enddo
          enddo
+         !$OMP END DO
+
+         !$OMP BARRIER
+         !$OMP MASTER
          call mpas_deallocate_scratch_field(scratch % vorticityGradientNormalComponent, .true.)
          call mpas_deallocate_scratch_field(scratch % vorticityGradientTangentialComponent, .true.)
+         !$OMP END MASTER
+         !$OMP BARRIER
 
       endif
+
+      !$OMP BARRIER
+      !$OMP MASTER
       call mpas_deallocate_scratch_field(scratch % normalizedRelativeVorticityVertex, .true.)
       call mpas_deallocate_scratch_field(scratch % normalizedPlanetaryVorticityVertex, .true.)
+      !$OMP END MASTER
+      !$OMP BARRIER
 
       !
       ! equation of state
@@ -413,10 +481,13 @@ contains
          call mpas_timer_start("equation of state", .false., diagEOSTimer)
 
          ! compute in-place density
+         !$OMP MASTER
          call ocn_equation_of_state_density(s, grid, 0, 'relative', err)
 
          ! compute displacedDensity, the potential density referenced to the top layer
          call ocn_equation_of_state_density(s, grid, 1, 'relative', err)
+         !$OMP END MASTER
+         !$OMP BARRIER
 
          call mpas_timer_stop("equation of state", diagEOSTimer)
       endif
@@ -431,6 +502,7 @@ contains
         ! Compute pressure at top of each layer, and then
         ! Montgomery Potential.
         allocate(pTop(nVertLevels))
+        !$OMP DO PRIVATE(k)
         do iCell=1,nCells
 
            ! assume atmospheric pressure at the surface is zero for now.
@@ -450,10 +522,12 @@ contains
            end do
 
         end do
+        !$OMP END DO
         deallocate(pTop)
 
       else
 
+        !$OMP DO PRIVATE(k)
         do iCell=1,nCells
            ! Pressure for generalized coordinates.
            ! Pressure at top surface may be due to atmospheric pressure
@@ -481,13 +555,16 @@ contains
            end do
 
         end do
+        !$OMP END DO
 
       endif
+
 
       !
       ! Brunt-Vaisala frequency
       !
       coef = -gravity/config_density0
+      !$OMP DO PRIVATE(k)
       do iCell=1,nCells
          BruntVaisalaFreqTop(1,iCell) = 0.0
          do k=2,maxLevelCell(iCell)
@@ -495,10 +572,12 @@ contains
               / (zMid(k-1,iCell) - zMid(k,iCell))
           end do
       end do
+      !$OMP END DO
 
       !
       ! Sea Surface Height
       !
+      !$OMP DO
       do iCell=1,nCells
          ! Start at the bottom where we know the depth, and go up.
          ! The bottom depth for this cell is bottomDepth(iCell).
@@ -506,16 +585,21 @@ contains
          ! and z-coordinates are negative below the surface.
 
          ssh(iCell) = - bottomDepth(iCell) + sum(layerThickness(1:maxLevelCell(iCell),iCell))
-
       end do
+      !$OMP END DO
 
       !
       ! Apply the GM closure as a bolus velocity
       !
       if (config_h_kappa .GE. epsilon(0D0)) then
+         !$OMP MASTER
          call ocn_gm_compute_uBolus(s,grid)
+         !$OMP END MASTER
+         !$OMP BARRIER
       else
+         !$OMP WORKSHARE
          uBolusGM = 0.0
+         !$OMP END WORKSHARE
       end if
 
    end subroutine ocn_diagnostic_solve!}}}
@@ -606,7 +690,9 @@ contains
 
       if (config_vert_coord_movement.eq.'isopycnal') then
         ! set vertical transport to zero in isopycnal case
+        !$OMP WORKSHARE
         vertTransportVelocityTop=0.0
+        !$OMP END WORKSHARE
         return
       end if
 
@@ -617,6 +703,7 @@ contains
       ! See Ringler et al. (2010) jcp paper, eqn 19, 21, and fig. 3.
       !
 
+      !$OMP DO PRIVATE(i, iEdge, k, flux, div_hu_btr, thicknessSum, invAreaCell)
       do iCell=1,nCells
         div_hu(:) = 0.0
         div_hu_btr = 0.0
@@ -649,6 +736,7 @@ contains
            vertTransportVelocityTop(k,iCell) = vertTransportVelocityTop(k+1,iCell) - div_hu(k) - h_tend_col(k)
         end do
       end do
+      !$OMP END DO
 
       deallocate(div_hu, h_tend_col)
 
@@ -800,6 +888,7 @@ contains
       maxLevelEdgeTop => grid % maxLevelEdgeTop % array
       nEdges      = grid % nEdges
 
+      !$OMP DO PRIVATE(k, normalThicknessFluxSum, thicknessSum, vertSum)
       do iEdge=1,nEdges
 
         ! thicknessSum is initialized outside the loop because on land boundaries 
@@ -818,6 +907,7 @@ contains
           tend_normalVelocity(k,iEdge) = tend_normalVelocity(k,iEdge) - vertSum
         enddo
       enddo ! iEdge
+      !$OMP END DO
 
       call mpas_timer_stop("ocn_filter_btr_mode_tend_vel")
 

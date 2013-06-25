@@ -81,6 +81,7 @@
 #ifdef MPAS_TAU 
           call tau_start(timer_name)
 #endif
+          !$OMP MASTER
 
           timer_added = .false.
           timer_found = .false.
@@ -190,6 +191,7 @@
           if(present(timer_ptr)) then
               timer_ptr => current
           endif
+          !$OMP END MASTER
           
         end subroutine mpas_timer_start!}}}
        
@@ -219,9 +221,11 @@
           logical :: timer_found, string_equal, check_flag
           integer :: clock, hz, usecs
 
+
 #ifdef MPAS_TAU 
           call tau_stop(timer_name)
 #endif
+          !$OMP MASTER
  
           timer_found = .false.
  
@@ -279,6 +283,7 @@
             current%avg_time = current%avg_time + time_temp
             current%calls = current%calls + 1
           endif
+          !$OMP END MASTER
 
         end subroutine mpas_timer_stop!}}}
 

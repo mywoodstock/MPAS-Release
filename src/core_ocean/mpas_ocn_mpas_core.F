@@ -456,7 +456,9 @@ module mpas_core
          end do
 
          call mpas_timer_start("time integration", .false., timeIntTimer)
+         !$OMP PARALLEL DEFAULT(FIRSTPRIVATE) SHARED(domain)
          call mpas_timestep(domain, itimestep, dt, timeStamp)
+         !$OMP END PARALLEL
          call mpas_timer_stop("time integration", timeIntTimer)
    
          ! Move time level 2 fields back into time level 1 for next time step
@@ -628,6 +630,7 @@ module mpas_core
       !end if
 
       !TODO: replace the above code block with this if we desire to convert config_stats_interval to use alarms
+      !$OMP MASTER
       if (mpas_is_alarm_ringing(clock, statsAlarmID, ierr=ierr)) then
          call mpas_reset_clock_alarm(clock, statsAlarmID, ierr=ierr)
 
@@ -644,6 +647,8 @@ module mpas_core
       !           timeStamp, dt)
          call mpas_timer_stop("global diagnostics")
       end if
+      !$OMP END MASTER
+      !$OMP BARRIER
 
    end subroutine mpas_timestep!}}}
 
