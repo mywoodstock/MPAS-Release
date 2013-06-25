@@ -158,6 +158,7 @@ contains
       !
       ! compute a boundary mask to enforce insulating boundary conditions in the horizontal
       !
+      !$OMP DO PRIVATE(invAreaCell1, i, iEdge, cell1, cell2, r_tmp, k, iTracer, tracer_turb_flux, flux)
       do iCell = 1, nCells
         invAreaCell1 = 1.0 / areaCell(iCell)
         do i = 1, nEdgesOncell(iCell)
@@ -178,9 +179,9 @@ contains
               tend(iTracer, k, iCell) = tend(iTracer, k, iCell) - edgeSignOnCell(i, iCell) * flux * invAreaCell1
             end do
           end do
-
         end do
       end do
+      !$OMP END DO
 
    !--------------------------------------------------------------------
 

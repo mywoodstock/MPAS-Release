@@ -72,7 +72,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_tracer_hmix_del4_tend(grid, layerThicknessEdge, tracers, tend, err)!{{{
+   subroutine ocn_tracer_hmix_del4_tend(grid, layerThicknessEdge, tracers, tend, scratch, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -98,6 +98,8 @@ contains
       real (kind=RKIND), dimension(:,:,:), intent(inout) :: &
          tend          !< Input/Output: velocity tendency
 
+      type (scratch_type), intent(inout) :: scratch !< Input/Output: Scratch structure
+
       !-----------------------------------------------------------------
       !
       ! output variables
@@ -120,7 +122,7 @@ contains
 
       real (kind=RKIND) :: invAreaCell1, invAreaCell2, tracer_turb_flux, flux, invdcEdge, r_tmp1, r_tmp2
 
-      real (kind=RKIND), dimension(:,:,:), allocatable :: delsq_tracer
+      real (kind=RKIND), dimension(:,:,:), pointer :: delsq_tracer
 
       real (kind=RKIND), dimension(:), pointer :: dcEdge, dvEdge, areaCell, meshScalingDel4
 
@@ -157,11 +159,19 @@ contains
       edgesOnCell => grid % edgesOnCell % array
       edgeSignOnCell => grid % edgeSignOnCell % array
 
-      allocate(delsq_tracer(num_tracers,nVertLevels, nCells+1))
+      !$OMP MASTER
+      call mpas_allocate_scratch_field(scratch % delsq_tracer, .true.)
+      !$OMP END MASTER
+      !$OMP BARRIER
 
+      delsq_tracer => scratch % delsq_tracer % array
+
+      !$OMP WORKSHARE
       delsq_tracer(:,:,:) = 0.0
+      !$OMP END WORKSHARE
 
       ! first del2: div(h \nabla \phi) at cell center
+      !$OMP DO PRIVATE(invAreaCell1, i, iEdge, invdcEdge, cell1, cell2, k, iTracer, r_tmp1, r_tmp2)
       do iCell = 1, nCells
         invAreaCell1 = 1.0 / areaCell(iCell)
         do i = 1, nEdgesOnCell(iCell)
@@ -181,8 +191,10 @@ contains
           end do
         end do
       end do
+      !$OMP END DO
 
       ! second del2: div(h \nabla [delsq_tracer]) at cell center
+      !$OMP DO PRIVATE(invAreaCell1, i, iEdge, cell1, cell2, invdcEdge, k, iTracer, tracer_turb_flux, flux)
       do iCell = 1, nCells
         invAreaCell1 = 1.0 / areaCell(iCell)
         do i = 1, nEdgesOnCell(iCell)
@@ -203,8 +215,13 @@ contains
           end do
         end do
       end do
+      !$OMP END DO
 
-      deallocate(delsq_tracer)
+      !$OMP BARRIER
+      !$OMP MASTER
+      call mpas_deallocate_scratch_field(scratch % delsq_tracer, .true.)
+      !$OMP END MASTER
+      !$OMP BARRIER
    !--------------------------------------------------------------------
 
    end subroutine ocn_tracer_hmix_del4_tend!}}}

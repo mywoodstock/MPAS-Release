@@ -131,6 +131,8 @@ contains
       invSalinity = 1.0 / (salinityTimeScale * 86400.0)
 
       k = 1  ! restoring only in top layer
+
+      !$OMP DO
       do iCell=1,nCellsSolve
         tend(indexT, k, iCell) = tend(indexT, k, iCell) - layerThickness(k,iCell)*(tracers(indexT, k, iCell) - temperatureRestore(iCell)) * invTemp
         tend(indexS, k, iCell) = tend(indexS, k, iCell) - layerThickness(k,iCell)*(tracers(indexS, k, iCell) - salinityRestore(iCell)) * invSalinity
@@ -141,6 +143,7 @@ contains
 !             / (config_restoreT_timescale * 86400.0)
 
       enddo
+      !$OMP END DO
 
    !--------------------------------------------------------------------
 

@@ -1084,6 +1084,14 @@
 		<var name="normalThicknessFlux" persistence="scratch" type="real" dimensions="nVertLevels nEdges"
 			 description="Thickness flux at edges" units="m^2 s^{-1}"
 		/>
+		<var_array name="delsq_tracer" persistence="scratch" type="real" dimensions="nVertLevels nCells Time">
+			<var name="temperature" array_group="dynamics"
+			     description="potential temperature"
+			/>
+			<var name="salinity" array_group="dynamics"
+			     description="salinity"
+			/>
+		</var_array>
 			 
     </var_struct>
 </registry>

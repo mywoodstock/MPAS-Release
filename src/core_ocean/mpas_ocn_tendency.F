@@ -264,10 +264,11 @@ contains
 !>  This routine computes tracer tendencies for the ocean
 !
 !-----------------------------------------------------------------------
-   subroutine ocn_tend_tracer(tend, s, d, grid, dt)!{{{
+   subroutine ocn_tend_tracer(tend, scratch, s, d, grid, dt)!{{{
       implicit none
 
       type (tend_type), intent(inout) :: tend !< Input/Output: Tendency structure
+      type (scratch_type), intent(inout) :: scratch !< Input/Output: Scratch structure
       type (state_type), intent(in) :: s !< Input: State information
       type (diagnostics_type), intent(in) :: d !< Input: Diagnostic information
       type (mesh_type), intent(in) :: grid !< Input: Grid information
@@ -295,34 +296,46 @@ contains
       !
       ! initialize tracer tendency (RHS of tracer equation) to zero.
       !
+      !$OMP WORKSHARE
       tend_tr(:,:,:) = 0.0
+      !$OMP END WORKSHARE
 
       if(config_disable_tr_all_tend) return
 
-      allocate(normalThicknessFlux(grid % nVertLevels, grid % nEdges+1))
+      !$OMP MASTER
+      call mpas_allocate_scratch_field(scratch % normalThicknessFlux, .true.)
+      !$OMP END MASTER
+      !$OMP BARRIER
+
+      normalThicknessFlux => scratch % normalThicknessFlux % array
       !
       ! QC Comment (3/15/12): need to make sure that uTransport is the right
       ! transport velocity for the tracer.
+      !$OMP DO PRIVATE(k)
       do iEdge = 1, grid % nEdges
          do k = 1, grid % nVertLevels
             normalThicknessFlux(k, iEdge) = uTransport(k, iEdge) * layerThicknessEdge(k, iEdge)
          end do
       end do
+      !$OMP END DO
 
       !
       ! tracer tendency: horizontal advection term -div( layerThickness \phi u)
       !
 
       ! Monotonoic Advection, or standard advection
+      !$OMP MASTER
       call mpas_timer_start("adv", .false., tracerHadvTimer)
       call mpas_ocn_tracer_advection_tend(tracers, normalThicknessFlux, vertTransportVelocityTop, layerThickness, layerThickness, dt, grid, tend_layerThickness, tend_tr)
       call mpas_timer_stop("adv", tracerHadvTimer)
+      !$OMP END MASTER
+      !$OMP BARRIER
 
       !
       ! tracer tendency: del2 horizontal tracer diffusion, div(h \kappa_2 \nabla \phi)
       !
       call mpas_timer_start("hmix", .false., tracerHmixTimer)
-      call ocn_tracer_hmix_tend(grid, layerThicknessEdge, tracers, tend_tr, err)
+      call ocn_tracer_hmix_tend(grid, layerThicknessEdge, tracers, tend_tr, scratch, err)
       call mpas_timer_stop("hmix", tracerHmixTimer)
 
       !
@@ -336,7 +349,11 @@ contains
 
       call mpas_timer_stop("ocn_tend_tracer")
 
-      deallocate(normalThicknessFlux)
+      !$OMP BARRIER
+      !$OMP MASTER
+      call mpas_deallocate_scratch_field(scratch % normalThicknessFlux, .true.)
+      !$OMP END MASTER
+      !$OMP BARRIER
 
    end subroutine ocn_tend_tracer!}}}
 

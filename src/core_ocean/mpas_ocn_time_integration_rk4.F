@@ -181,15 +181,11 @@ module ocn_time_integration_rk4
 
            call ocn_tend_thick(block % tend, block % provis_state, block % mesh)
 
-           !$OMP BARRIER
-           !$OMP MASTER
            if (config_filter_btr_mode) then
                call ocn_filter_btr_mode_tend_vel(block % tend, block % provis_state, block % mesh)
            endif
 
-           call ocn_tend_tracer(block % tend, block % provis_state, block % diagnostics, block % mesh, dt)
-           !$OMP END MASTER
-           !$OMP BARRIER
+           call ocn_tend_tracer(block % tend, block % scratch, block % provis_state, block % diagnostics, block % mesh, dt)
            block => block % next
         end do
         call mpas_timer_stop("RK4-tendency computations")

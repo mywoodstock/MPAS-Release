@@ -797,7 +797,7 @@ module ocn_time_integration_split
 
          block => domain % blocklist
          do while (associated(block))
-            call ocn_tend_tracer(block % tend, block % state % time_levs(2) % state, block % diagnostics, block % mesh, dt)
+            call ocn_tend_tracer(block % tend, block % scratch, block % state % time_levs(2) % state, block % diagnostics, block % mesh, dt)
 
             block => block % next
          end do
