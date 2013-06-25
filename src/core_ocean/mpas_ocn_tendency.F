@@ -148,10 +148,11 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_tend_vel(tend, s, d, grid)!{{{
+   subroutine ocn_tend_vel(tend, scratch, s, d, grid)!{{{
       implicit none
 
       type (tend_type), intent(inout) :: tend !< Input/Output: Tendency structure
+      type (scratch_type), intent(inout) :: scratch !< Input/Output: Scratch structure
       type (state_type), intent(in) :: s !< Input: State information
       type (diagnostics_type), intent(in) :: d !< Input: Diagnostic information
       type (mesh_type), intent(in) :: grid !< Input: Grid information
@@ -190,7 +191,9 @@ contains
       !
       ! velocity tendency: start accumulating tendency terms
       !
+      !$OMP WORKSHARE
       tend_normalVelocity(:,:) = 0.0
+      !$OMP END WORKSHARE
 
       if(config_disable_vel_all_tend) return
 
@@ -225,9 +228,13 @@ contains
       !   computed as \nu( \nabla divergence + k \times \nabla relativeVorticity )
       !   strictly only valid for config_mom_del2 == constant
       !
+      !$OMP BARRIER
+      !$OMP MASTER
       call mpas_timer_start("hmix", .false., velHmixTimer)
-      call ocn_vel_hmix_tend(grid, divergence, relativeVorticity, viscosity, tend_normalVelocity, err)
+      call ocn_vel_hmix_tend(grid, divergence, relativeVorticity, viscosity, tend_normalVelocity, scratch, err)
       call mpas_timer_stop("hmix", velHmixTimer)
+      !$OMP END MASTER
+      !$OMP BARRIER
 
       !
       ! velocity tendency: forcing and bottom drag

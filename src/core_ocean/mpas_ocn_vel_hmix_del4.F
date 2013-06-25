@@ -72,7 +72,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_vel_hmix_del4_tend(grid, divergence, relativeVorticity, tend, err)!{{{
+   subroutine ocn_vel_hmix_del4_tend(grid, divergence, relativeVorticity, tend, scratch, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -97,6 +97,8 @@ contains
 
       real (kind=RKIND), dimension(:,:), intent(inout) :: &
          tend       !< Input/Output: velocity tendency
+
+      type (scratch_type), intent(inout) :: scratch !< Input/Output: Scratch structure
 
       !-----------------------------------------------------------------
       !
@@ -126,7 +128,7 @@ contains
       real (kind=RKIND), dimension(:), pointer :: dcEdge, dvEdge, areaTriangle, &
             meshScalingDel4, areaCell
 
-      real (kind=RKIND), dimension(:,:), allocatable :: delsq_divergence, &
+      real (kind=RKIND), dimension(:,:), pointer :: delsq_divergence, &
             delsq_circulation, delsq_relativeVorticity, delsq_u
 
       err = 0
@@ -157,9 +159,13 @@ contains
       edgeSignOnVertex => grid % edgeSignOnVertex % array
       edgeSignOnCell => grid % edgeSignOnCell % array
 
-      allocate(delsq_u(nVertLEvels, nEdges+1))
-      allocate(delsq_divergence(nVertLevels, nCells+1))
-      allocate(delsq_relativeVorticity(nVertLevels, nVertices+1))
+      call mpas_allocate_scratch_field(scratch % delsq_u, .true.)
+      call mpas_allocate_scratch_field(scratch % delsq_divergence, .true.)
+      call mpas_allocate_scratch_field(scratch % delsq_relativeVorticity, .true.)
+
+      delsq_u => scratch % delsq_u % array
+      delsq_relativeVorticity => scratch % delsq_relativeVorticity % array
+      delsq_divergence => scratch % delsq_divergence % array
 
       delsq_u(:,:) = 0.0
       delsq_relativeVorticity(:,:) = 0.0
@@ -225,9 +231,9 @@ contains
          end do
       end do
 
-      deallocate(delsq_u)
-      deallocate(delsq_divergence)
-      deallocate(delsq_relativeVorticity)
+      call mpas_deallocate_scratch_field(scratch % delsq_u)
+      call mpas_deallocate_scratch_field(scratch % delsq_divergence)
+      call mpas_deallocate_scratch_field(scratch % delsq_relativeVorticity)
 
    !--------------------------------------------------------------------
 

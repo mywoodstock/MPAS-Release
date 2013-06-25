@@ -134,6 +134,7 @@ contains
 
       nEdgesSolve = grid % nEdgesSolve
 
+      !$OMP DO PRIVATE(cell1, cell2, invLength, k, q, j, eoe, workVorticity)
       do iEdge=1,grid % nEdgesSolve
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
@@ -155,6 +156,7 @@ contains
 
          end do
       end do
+      !$OMP END DO
 
    !--------------------------------------------------------------------
 

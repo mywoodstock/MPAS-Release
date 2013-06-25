@@ -135,6 +135,7 @@ contains
       ! we have set density0Inv=1 and gdensity0Inv=0 in the init routine,
       ! and pressure is passed in as montgomeryPotential.
 
+      !$OMP DO PRIVATE(cell1, cell2, invdcEdge, k)
       do iEdge=1,nEdgesSolve
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
@@ -149,10 +150,8 @@ contains
                           - zMid(k,cell1) )* invdcEdge
                       
          end do
-
       end do
-
-
+      !$OMP END DO
 
    !--------------------------------------------------------------------
 

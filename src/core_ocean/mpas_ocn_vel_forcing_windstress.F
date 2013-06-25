@@ -127,6 +127,7 @@ contains
       maxLevelEdgeTop => grid % maxLevelEdgeTop % array
       edgeMask => grid % edgeMask % array
 
+      !$OMP DO PRIVATE(k)
       do iEdge=1,nEdgesSolve
         ! efficiency note: it would be nice to avoid this
         ! if within a do.  This could be done with

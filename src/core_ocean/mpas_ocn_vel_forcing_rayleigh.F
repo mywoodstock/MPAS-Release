@@ -124,6 +124,7 @@ contains
       nEdgesSolve = grid % nEdgesSolve
       maxLevelEdgeTop => grid % maxLevelEdgeTop % array
 
+      !$OMP DO PRIVATE(k)
       do iEdge=1,nEdgesSolve
         do k=1,maxLevelEdgeTop(iEdge)
 
@@ -131,6 +132,7 @@ contains
 
         enddo
       enddo
+      !$OMP END DO
 
 
    !--------------------------------------------------------------------
