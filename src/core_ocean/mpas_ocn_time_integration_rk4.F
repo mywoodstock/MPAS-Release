@@ -372,9 +372,10 @@ module ocn_time_integration_rk4
                           block % state % time_levs(2) % state % normalVelocityMeridional % array    &
                          )
 
-         call ocn_time_average_accumulate(block % state % time_levs(2) % state, block % state % time_levs(1) % state)
          !$OMP END MASTER
          !$OMP BARRIER
+
+         call ocn_time_average_accumulate(block % state % time_levs(2) % state, block % state % time_levs(1) % state)
 
          block => block % next
       end do

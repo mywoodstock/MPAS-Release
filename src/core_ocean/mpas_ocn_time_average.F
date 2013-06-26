@@ -96,6 +96,7 @@ module ocn_time_average
         old_varNormalVelocity => old_state % varNormalVelocity % array
         old_avgVertVelocityTop => old_state % avgVertVelocityTop % array
 
+        !$OMP WORKSHARE
         avgSSH = old_avgSSH + ssh
         varSSH = old_varSSH + ssh**2
         avgnormalVelocityZonal = old_avgnormalVelocityZonal + normalVelocityZonal
@@ -105,8 +106,12 @@ module ocn_time_average
         avgNormalVelocity = old_avgNormalVelocity + normalVelocity
         varNormalVelocity = old_varNormalVelocity + normalVelocity**2
         avgVertVelocityTop = old_avgVertVelocityTop + vertVelocityTop
+        !$OMP END WORKSHARE
 
+        !$OMP MASTER
         nAverage = old_nAverage + 1
+        !$OMP END MASTER
+        !$OMP BARRIER
     end subroutine ocn_time_average_accumulate!}}}
 
     subroutine ocn_time_average_normalize(state)!{{{
