@@ -784,6 +784,7 @@ contains
       !
       ! Put f*normalBaroclinicVelocity^{perp} in u as a work variable
       !
+      !$OMP DO PRIVATE(cell1, cell2, k, j, eoe)
       do iEdge=1,nEdgesSolve
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
@@ -797,6 +798,7 @@ contains
             end do
          end do
       end do
+      !$OMP END DO
 
       call mpas_timer_stop("ocn_fuperp")
 
@@ -831,6 +833,7 @@ contains
       maxLevelEdgeTop => grid % maxLevelEdgeTop % array
       nEdges      = grid % nEdges
 
+      !$OMP DO PRIVATE(normalThicknessFluxSum, thicknesssum, k, vertSum)
       do iEdge=1,nEdges
 
         ! thicknessSum is initialized outside the loop because on land boundaries 
@@ -849,6 +852,7 @@ contains
           normalVelocity(k,iEdge) = normalVelocity(k,iEdge) - vertSum
         enddo
       enddo ! iEdge
+      !$OMP END DO
 
       call mpas_timer_stop("ocn_filter_btr_mode_vel")
 
