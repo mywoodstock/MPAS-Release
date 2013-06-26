@@ -136,7 +136,11 @@ contains
 
       if(.not.hmixOn) return
 
+      err = 0
+
+      !$OMP WORKSHARE
       viscosity = 0.0
+      !$OMP END WORKSHARE
 
       call mpas_timer_start("del2", .false., del2Timer)
       call ocn_vel_hmix_del2_tend(grid, divergence, relativeVorticity, viscosity, tend, err1)

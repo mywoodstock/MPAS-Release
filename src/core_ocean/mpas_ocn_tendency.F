@@ -230,13 +230,9 @@ contains
       !   computed as \nu( \nabla divergence + k \times \nabla relativeVorticity )
       !   strictly only valid for config_mom_del2 == constant
       !
-      !$OMP BARRIER
-      !$OMP MASTER
       call mpas_timer_start("hmix", .false., velHmixTimer)
       call ocn_vel_hmix_tend(grid, divergence, relativeVorticity, viscosity, tend_normalVelocity, scratch, err)
       call mpas_timer_stop("hmix", velHmixTimer)
-      !$OMP END MASTER
-      !$OMP BARRIER
 
       !
       ! velocity tendency: forcing and bottom drag

@@ -159,19 +159,25 @@ contains
       edgeSignOnVertex => grid % edgeSignOnVertex % array
       edgeSignOnCell => grid % edgeSignOnCell % array
 
+      !$OMP MASTER
       call mpas_allocate_scratch_field(scratch % delsq_u, .true.)
       call mpas_allocate_scratch_field(scratch % delsq_divergence, .true.)
       call mpas_allocate_scratch_field(scratch % delsq_relativeVorticity, .true.)
+      !$OMP END MASTER
+      !$OMP BARRIER
 
       delsq_u => scratch % delsq_u % array
       delsq_relativeVorticity => scratch % delsq_relativeVorticity % array
       delsq_divergence => scratch % delsq_divergence % array
 
+      !$OMP WORKSHARE
       delsq_u(:,:) = 0.0
       delsq_relativeVorticity(:,:) = 0.0
       delsq_divergence(:,:) = 0.0
+      !$OMP END WORKSHARE
 
       !Compute delsq_u
+      !$OMP DO PRIVATE(cell1, cell2, vertex1, vertex2, invDcEdge, invDvEdge, k)
       do iEdge = 1, nEdges
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
@@ -188,8 +194,10 @@ contains
                                -( relativeVorticity(k,vertex2) - relativeVorticity(k,vertex1)) * invDcEdge * sqrt(3.0)   
          end do
       end do
+      !$OMP END DO
 
       ! Compute delsq_relativeVorticity
+      !$OMP DO PRIVATE(invAreaTri1, i, iEdge, k)
       do iVertex = 1, nVertices
          invAreaTri1 = 1.0 / areaTriangle(iVertex)
          do i = 1, vertexDegree
@@ -199,8 +207,10 @@ contains
             end do
          end do
       end do
+      !$OMP END DO
 
       ! Compute delsq_divergence
+      !$OMP DO PRIVATE(invAreaCell1, i, iEdge, k)
       do iCell = 1, nCells
          invAreaCell1 = 1.0 / areaCell(iCell)
          do i = 1, nEdgesOnCell(iCell)
@@ -210,9 +220,11 @@ contains
             end do
          end do
       end do
+      !$OMP END DO
 
       ! Compute - \kappa \nabla^4 u 
       ! as  \nabla div(\nabla^2 u) + k \times \nabla ( k \cross curl(\nabla^2 u) )
+      !$OMP DO PRIVATE(cell1, cell2, vertex1, vertex2, invDcEdge, invDvEdge, r_tmp, k, u_diffusion)
       do iEdge=1,nEdgesSolve
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
@@ -230,10 +242,15 @@ contains
             tend(k,iEdge) = tend(k,iEdge) - edgeMask(k, iEdge) * u_diffusion * r_tmp
          end do
       end do
+      !$OMP END DO
 
+      !$OMP BARRIER
+      !$OMP MASTER
       call mpas_deallocate_scratch_field(scratch % delsq_u)
       call mpas_deallocate_scratch_field(scratch % delsq_divergence)
       call mpas_deallocate_scratch_field(scratch % delsq_relativeVorticity)
+      !$OMP END MASTER
+      !$OMP BARRIER
 
    !--------------------------------------------------------------------
 
