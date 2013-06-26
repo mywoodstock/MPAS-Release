@@ -148,11 +148,8 @@ contains
       tracers => s % tracers % array
 
       call mpas_timer_start("eos rich", .false., richEOSTimer)
-      !$OMP MASTER
       call ocn_equation_of_state_density(s, grid, 0,'relative', err)
       call ocn_equation_of_state_density(s, grid, 1,'relative', err)
-      !$OMP END MASTER
-      !$OMP BARRIER
       call mpas_timer_stop("eos rich", richEOSTimer)
 
       call ocn_vmix_get_rich_numbers(grid, indexT, indexS, normalVelocity, layerThickness, layerThicknessEdge, & 

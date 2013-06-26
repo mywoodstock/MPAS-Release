@@ -481,13 +481,10 @@ contains
          call mpas_timer_start("equation of state", .false., diagEOSTimer)
 
          ! compute in-place density
-         !$OMP MASTER
          call ocn_equation_of_state_density(s, grid, 0, 'relative', err)
 
          ! compute displacedDensity, the potential density referenced to the top layer
          call ocn_equation_of_state_density(s, grid, 1, 'relative', err)
-         !$OMP END MASTER
-         !$OMP BARRIER
 
          call mpas_timer_stop("equation of state", diagEOSTimer)
       endif

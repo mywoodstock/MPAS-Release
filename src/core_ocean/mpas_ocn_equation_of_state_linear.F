@@ -96,6 +96,7 @@ contains
 
       err = 0
 
+      !$OMP DO PRIVATE(k)
       do iCell=1,nCells
          do k=1,maxLevelCell(iCell)
             ! Linear equation of state
@@ -104,6 +105,7 @@ contains
                   + config_eos_linear_beta  * (tracers(indexS,k,iCell)-config_eos_linear_Sref)
          end do
       end do
+      !$OMP END DO
 
    end subroutine ocn_equation_of_state_linear_density!}}}
 
