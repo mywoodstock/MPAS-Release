@@ -797,7 +797,7 @@ module mpas_core
 
             enddo  
 
-            deallocate(minBottomDepth,zMidZLevel)
+            deallocate(minBottomDepth, minBottomDepthMid,zMidZLevel)
 
           elseif (config_alter_ICs_for_pbcs.eq.'zlevel_pbcs_off') then
 
