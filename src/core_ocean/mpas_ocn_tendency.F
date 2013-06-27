@@ -320,12 +320,9 @@ contains
       !
 
       ! Monotonoic Advection, or standard advection
-      !$OMP MASTER
       call mpas_timer_start("adv", .false., tracerHadvTimer)
-      call mpas_ocn_tracer_advection_tend(tracers, normalThicknessFlux, vertTransportVelocityTop, layerThickness, layerThickness, dt, grid, tend_layerThickness, tend_tr)
+      call mpas_ocn_tracer_advection_tend(tracers, normalThicknessFlux, vertTransportVelocityTop, layerThickness, layerThickness, dt, grid, tend_layerThickness, scratch, tend_tr)
       call mpas_timer_stop("adv", tracerHadvTimer)
-      !$OMP END MASTER
-      !$OMP BARRIER
 
       !
       ! tracer tendency: del2 horizontal tracer diffusion, div(h \kappa_2 \nabla \phi)

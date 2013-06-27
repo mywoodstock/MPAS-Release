@@ -1105,6 +1105,25 @@
 		<var name="du2TopOfEdge" persistence="scratch" type="real" dimensions="nVertLevelsP1 nEdges"
 			 description="dVel^2 top of edge"
 	    />
-			 
+		<var name="tracer_new" persistence="scratch" type="real" dimensions="nVertLevels nCells"
+		/>
+		<var name="tracer_cur" persistence="scratch" type="real" dimensions="nVertLevels nCells"
+		/>
+		<var name="upwind_tendency" persistence="scratch" type="real" dimensions="nVertLevels nCells"
+		/>
+		<var name="inv_h_new" persistence="scratch" type="real" dimensions="nVertLevels nCells"
+		/>
+		<var name="tracer_max" persistence="scratch" type="real" dimensions="nVertLevels nCells"
+		/>
+		<var name="tracer_min" persistence="scratch" type="real" dimensions="nVertLevels nCells"
+		/>
+		<var name="flux_incoming" persistence="scratch" type="real" dimensions="nVertLevels nCells"
+		/>
+		<var name="flux_outgoing" persistence="scratch" type="real" dimensions="nVertLevels nCells"
+		/>
+		<var name="high_order_horiz_flux" persistence="scratch" type="real" dimensions="nVertLevels nEdges"
+		/>
+		<var name="high_order_vert_flux" persistence="scratch" type="real" dimensions="nVertLevelsP1 nCells"
+		/>
     </var_struct>
 </registry>

@@ -244,8 +244,9 @@ module mpas_ocn_tracer_advection
 !>  advection of tracers.
 !
 !-----------------------------------------------------------------------
-   subroutine mpas_ocn_tracer_advection_tend(tracers, normalThicknessFlux, w, layerThickness, verticalCellSize, dt, grid, tend_layerThickness, tend)!{{{
+   subroutine mpas_ocn_tracer_advection_tend(tracers, normalThicknessFlux, w, layerThickness, verticalCellSize, dt, grid, tend_layerThickness, scratch, tend)!{{{
 
+      type (scratch_type), intent(inout) :: scratch !< Input/Output: Scratch Structure
       real (kind=RKIND), dimension(:,:,:), intent(inout) :: tend !< Input/Output: tracer tendency
       real (kind=RKIND), dimension(:,:,:), intent(in) :: tracers !< Input/Output: tracer values
       real (kind=RKIND), dimension(:,:), intent(in) :: normalThicknessFlux !< Input: Thickness weighted horizontal velocity
@@ -259,7 +260,7 @@ module mpas_ocn_tracer_advection
       if(.not. tracerAdvOn) return
 
       if(monotonicOn) then
-         call mpas_ocn_tracer_advection_mono_tend(tracers, normalThicknessFlux, w, layerThickness, verticalCellSize, dt, grid, tend_layerThickness, tend)
+         call mpas_ocn_tracer_advection_mono_tend(tracers, normalThicknessFlux, w, layerThickness, verticalCellSize, dt, grid, tend_layerThickness, scratch, tend)
       else
          call mpas_ocn_tracer_advection_std_tend(tracers, normalThicknessFlux, w, verticalCellSize, grid, tend)
       endif
