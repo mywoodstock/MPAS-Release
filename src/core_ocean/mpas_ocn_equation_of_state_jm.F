@@ -269,7 +269,7 @@ contains
          enddo
       endif
 
-      !$OMP DO PRIVATE(k, SQ, TQ, SQR, T2, WORK1, WORK2, density_S, WORK3, WORK4, BULK_MOD, DENOMK)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k, SQ, TQ, SQR, T2, WORK1, WORK2, density_S, WORK3, WORK4, BULK_MOD, DENOMK)
       do iCell=1,nCells
          do k=1,maxLevelCell(iCell)
             SQ  = max(min(tracers(indexS,k,iCell),smax),smin)

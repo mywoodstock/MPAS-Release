@@ -148,7 +148,7 @@ contains
       dcEdge => grid % dcEdge % array
       dvEdge => grid % dvEdge % array
 
-      !$OMP DO PRIVATE(cell1, cell2, vertex1, vertex2, invLength1, invLength2, k, u_diffusion, visc2)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(cell1, cell2, vertex1, vertex2, invLength1, invLength2, k, u_diffusion, visc2)
       do iEdge=1,nEdgesSolve
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)

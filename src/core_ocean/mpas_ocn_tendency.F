@@ -307,7 +307,7 @@ contains
       !
       ! QC Comment (3/15/12): need to make sure that uTransport is the right
       ! transport velocity for the tracer.
-      !$OMP DO PRIVATE(k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
       do iEdge = 1, grid % nEdges
          do k = 1, grid % nVertLevels
             normalThicknessFlux(k, iEdge) = uTransport(k, iEdge) * layerThicknessEdge(k, iEdge)

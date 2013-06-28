@@ -188,7 +188,7 @@ contains
       !$OMP END WORKSHARE
       coef_3rd_order = config_coef_3rd_order
 
-      !$OMP DO PRIVATE(cell1, cell2, k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(cell1, cell2, k)
       do iEdge=1,nEdges
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
@@ -216,7 +216,7 @@ contains
       tangentialVelocity(:,:) = 0.0
       !$OMP END WORKSHARE
 
-      !$OMP DO PRIVATE(invAreaTri1, i, iEdge, k, r_tmp)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(invAreaTri1, i, iEdge, k, r_tmp)
       do iVertex = 1, nVertices
          invAreaTri1 = 1.0 / areaTriangle(iVertex)
          do i = 1, vertexDegree
@@ -235,7 +235,7 @@ contains
       relativeVorticityCell(:,:) = 0.0
       !$OMP END WORKSHARE
 
-      !$OMP DO PRIVATE(invAreaCell1, i, j, iVertex, k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(invAreaCell1, i, j, iVertex, k)
       do iCell = 1, nCells
         invAreaCell1 = 1.0 / areaCell(iCell)
 
@@ -250,7 +250,7 @@ contains
       !$OMP END DO
 
       allocate(div_hu(nVertLevels))
-      !$OMP DO PRIVATE(invAreaCell1, i, iEdge, k, r_tmp)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(invAreaCell1, i, iEdge, k, r_tmp)
       do iCell = 1, nCells
          div_hu(:) = 0.0
          invAreaCell1 = 1.0 / areaCell(iCell)
@@ -272,7 +272,7 @@ contains
       !$OMP END DO
       deallocate(div_hu)
 
-      !$OMP DO PRIVATE(i, eoe, k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(i, eoe, k)
       do iEdge=1,nEdges
          ! Compute v (tangential) velocities
          do i=1,nEdgesOnEdge(iEdge)
@@ -300,7 +300,7 @@ contains
       kineticEnergyVertexOnCells(:,:) = 0.0
       !$OMP END WORKSHARE
 
-      !$OMP DO PRIVATE(i, iEdge, r_tmp, k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(i, iEdge, r_tmp, k)
       do iVertex = 1, nVertices*ke_vertex_flag
         do i = 1, vertexDegree
           iEdge = edgesOnVertex(i, iVertex)
@@ -312,7 +312,7 @@ contains
       end do
       !$OMP END DO
 
-      !$OMP DO PRIVATE(invAreaCell1, i, j, iVertex, k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(invAreaCell1, i, j, iVertex, k)
       do iCell = 1, nCells*ke_vertex_flag
         invAreaCell1 = 1.0 / areaCell(iCell)
         do i = 1, nEdgesOnCell(iCell)
@@ -328,7 +328,7 @@ contains
       !
       ! Compute kinetic energy in each cell by blending kineticEnergyCell and kineticEnergyVertexOnCells
       !
-      !$OMP DO PRIVATE(k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
       do iCell=1,nCells*ke_vertex_flag
          do k=1,nVertLevels
             kineticEnergyCell(k,iCell) = 5.0/8.0*kineticEnergyCell(k,iCell) + 3.0/8.0*kineticEnergyVertexOnCells(k,iCell)
@@ -354,7 +354,7 @@ contains
       normalizedPlanetaryVorticityVertex  => scratch % normalizedPlanetaryVorticityVertex % array
       normalizedRelativeVorticityVertex  => scratch % normalizedRelativeVorticityVertex % array
 
-      !$OMP DO PRIVATE(invAreaTri1, k, layerThicknessVertex, i)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(invAreaTri1, k, layerThicknessVertex, i)
       do iVertex = 1,nVertices
          invAreaTri1 = 1.0 / areaTriangle(iVertex)
          do k=1,maxLevelVertexBot(iVertex)
@@ -375,7 +375,7 @@ contains
       normalizedPlanetaryVorticityEdge(:,:) = 0.0
       !$OMP END WORKSHARE
 
-      !$OMP DO PRIVATE(vertex1, vertex2, k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(vertex1, vertex2, k)
       do iEdge = 1, nEdges
         vertex1 = verticesOnEdge(1, iEdge)
         vertex2 = verticesOnEdge(2, iEdge)
@@ -390,7 +390,7 @@ contains
       normalizedRelativeVorticityCell(:,:) = 0.0
       !$OMP END WORKSHARE
 
-      !$OMP DO PRIVATE(invAreaCell1, i, j, iVertex, k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(invAreaCell1, i, j, iVertex, k)
       do iCell = 1, nCells
         invAreaCell1 = 1.0 / areaCell(iCell)
 
@@ -416,7 +416,7 @@ contains
          vorticityGradientNormalComponent => scratch % vorticityGradientNormalComponent % array
          vorticityGradientTangentialComponent => scratch % vorticityGradientTangentialComponent % array
 
-         !$OMP DO PRIVATE(cell1, cell2, vertex1, vertex2, invLength, k)
+         !$OMP DO SCHEDULE(RUNTIME) PRIVATE(cell1, cell2, vertex1, vertex2, invLength, k)
          do iEdge = 1,nEdges
             cell1 = cellsOnEdge(1, iEdge)
             cell2 = cellsOnEdge(2, iEdge)
@@ -445,7 +445,7 @@ contains
          !
          ! Modify PV edge with upstream bias.
          !
-         !$OMP DO PRIVATE(k)
+         !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
          do iEdge = 1,nEdges
             do k = 1,maxLevelEdgeBot(iEdge)
               normalizedRelativeVorticityEdge(k,iEdge) = normalizedRelativeVorticityEdge(k,iEdge) &
@@ -499,7 +499,7 @@ contains
         ! Compute pressure at top of each layer, and then
         ! Montgomery Potential.
         allocate(pTop(nVertLevels))
-        !$OMP DO PRIVATE(k)
+        !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
         do iCell=1,nCells
 
            ! assume atmospheric pressure at the surface is zero for now.
@@ -524,7 +524,7 @@ contains
 
       else
 
-        !$OMP DO PRIVATE(k)
+        !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
         do iCell=1,nCells
            ! Pressure for generalized coordinates.
            ! Pressure at top surface may be due to atmospheric pressure
@@ -561,7 +561,7 @@ contains
       ! Brunt-Vaisala frequency
       !
       coef = -gravity/config_density0
-      !$OMP DO PRIVATE(k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
       do iCell=1,nCells
          BruntVaisalaFreqTop(1,iCell) = 0.0
          do k=2,maxLevelCell(iCell)
@@ -574,7 +574,7 @@ contains
       !
       ! Sea Surface Height
       !
-      !$OMP DO
+      !$OMP DO SCHEDULE(RUNTIME)
       do iCell=1,nCells
          ! Start at the bottom where we know the depth, and go up.
          ! The bottom depth for this cell is bottomDepth(iCell).
@@ -700,7 +700,7 @@ contains
       ! See Ringler et al. (2010) jcp paper, eqn 19, 21, and fig. 3.
       !
 
-      !$OMP DO PRIVATE(i, iEdge, k, flux, div_hu_btr, thicknessSum, invAreaCell)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(i, iEdge, k, flux, div_hu_btr, thicknessSum, invAreaCell)
       do iCell=1,nCells
         div_hu(:) = 0.0
         div_hu_btr = 0.0
@@ -784,7 +784,7 @@ contains
       !
       ! Put f*normalBaroclinicVelocity^{perp} in u as a work variable
       !
-      !$OMP DO PRIVATE(cell1, cell2, k, j, eoe)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(cell1, cell2, k, j, eoe)
       do iEdge=1,nEdgesSolve
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
@@ -833,7 +833,7 @@ contains
       maxLevelEdgeTop => grid % maxLevelEdgeTop % array
       nEdges      = grid % nEdges
 
-      !$OMP DO PRIVATE(normalThicknessFluxSum, thicknesssum, k, vertSum)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(normalThicknessFluxSum, thicknesssum, k, vertSum)
       do iEdge=1,nEdges
 
         ! thicknessSum is initialized outside the loop because on land boundaries 
@@ -889,7 +889,7 @@ contains
       maxLevelEdgeTop => grid % maxLevelEdgeTop % array
       nEdges      = grid % nEdges
 
-      !$OMP DO PRIVATE(k, normalThicknessFluxSum, thicknessSum, vertSum)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k, normalThicknessFluxSum, thicknessSum, vertSum)
       do iEdge=1,nEdges
 
         ! thicknessSum is initialized outside the loop because on land boundaries 

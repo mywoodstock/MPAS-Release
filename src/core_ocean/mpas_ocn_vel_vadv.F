@@ -129,7 +129,7 @@ contains
 
       allocate(w_dudzTopEdge(nVertLevels+1))
       w_dudzTopEdge = 0.0
-      !$OMP DO PRIVATE(cell1, cell2, k, vertTransportVelocityTopEdge)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(cell1, cell2, k, vertTransportVelocityTopEdge)
       do iEdge=1,nEdgesSolve
         cell1 = cellsOnEdge(1,iEdge)
         cell2 = cellsOnEdge(2,iEdge)

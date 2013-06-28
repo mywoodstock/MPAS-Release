@@ -224,7 +224,7 @@ contains
       allocate(A(nVertLevels),B(nVertLevels),C(nVertLevels),velTemp(nVertLevels)) 
       A(1)=0
 
-      !$OMP DO PRIVATE(N, cell1, cell2, k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(N, cell1, cell2, k)
       do iEdge=1,nEdges
         N=maxLevelEdgeTop(iEdge)
         if (N.gt.0) then
@@ -352,7 +352,7 @@ contains
 
       allocate(A(nVertLevels),B(nVertLevels),C(nVertLevels),tracersTemp(num_tracers,nVertLevels))
 
-      !$OMP DO PRIVATE(N, k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(N, k)
       do iCell=1,nCells
          ! Compute A(k), B(k), C(k) for tracers
          N = maxLevelCell(iCell)

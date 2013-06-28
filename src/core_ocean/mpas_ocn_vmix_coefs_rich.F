@@ -227,7 +227,7 @@ contains
 
       maxLevelEdgeTop => grid % maxLevelEdgeTop % array
 
-      !$OMP DO PRIVATE(k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
       do iEdge = 1,nEdges
          do k = 2,maxLevelEdgeTop(iEdge)
             ! efficiency note: these if statements are inside iEdge and k loops.
@@ -317,7 +317,7 @@ contains
       maxLevelCell => grid % maxLevelCell % array
 
       coef = -gravity/config_density0/2.0
-      !$OMP DO PRIVATE(k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
       do iCell = 1,nCells
          do k = 2,maxLevelCell(iCell)
             ! efficiency note: these if statements are inside iEdge and k loops.
@@ -456,7 +456,7 @@ contains
       ddensityTopOfCell = 0.0
       !$OMP END WORKSHARE
 
-      !$OMP DO PRIVATE(k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
       do iCell=1,nCells
          do k=2,maxLevelCell(iCell)
             ddensityTopOfCell(k,iCell) = displacedDensity(k-1,iCell) - displacedDensity(k,iCell)
@@ -469,7 +469,7 @@ contains
       ddensityTopOfEdge = 0.0
       !$OMP END WORKSHARE
     
-      !$OMP DO PRIVATE(cell1, cell2, k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(cell1, cell2, k)
       do iEdge=1,nEdges
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
@@ -486,7 +486,7 @@ contains
       du2TopOfEdge=0.0
       !$OMP END WORKSHARE
 
-      !$OMP DO PRIVATE(k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
       do iEdge=1,nEdges
          do k=2,maxLevelEdgeTop(iEdge)
             du2TopOfEdge(k,iEdge) = (normalVelocity(k-1,iEdge) - normalVelocity(k,iEdge))**2
@@ -499,7 +499,7 @@ contains
       du2TopOfCell = 0.0
       !$OMP END WORKSHARE
 
-      !$OMP DO PRIVATE(invAreaCell, i, iEdge, k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(invAreaCell, i, iEdge, k)
       do iCell = 1, nCells
         invAreaCell = 1.0 / areaCell(iCell)
         do i = 1, nEdgesOnCell(iCell)
@@ -519,7 +519,7 @@ contains
       !$OMP END WORKSHARE
       coef = -gravity/config_density0/2.0
 
-      !$OMP DO PRIVATE(k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
       do iEdge = 1,nEdges
          do k = 2,maxLevelEdgeTop(iEdge)
             RiTopOfEdge(k,iEdge) = coef*ddensityTopOfEdge(k,iEdge) &
@@ -535,7 +535,7 @@ contains
       RiTopOfCell = 0.0
       !$OMP END WORKSHARE
 
-      !$OMP DO PRIVATE(k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
       do iCell = 1,nCells
          do k = 2,maxLevelCell(iCell)
             RiTopOfCell(k,iCell) = coef*ddensityTopOfCell(k,iCell) &

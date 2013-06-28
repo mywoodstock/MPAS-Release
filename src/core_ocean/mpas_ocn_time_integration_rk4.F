@@ -116,7 +116,7 @@ module ocn_time_integration_rk4
         block % state % time_levs(2) % state % layerThickness % array(:,:) = block % state % time_levs(1) % state % layerThickness % array(:,:)
         !$OMP END WORKSHARE
 
-        !$OMP DO PRIVATE(k)
+        !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
         do iCell=1,block % mesh % nCells  ! couple tracers to h
           do k=1,block % mesh % maxLevelCell % array(iCell)
             block % state % time_levs(2) % state % tracers % array(:,k,iCell) = block % state % time_levs(1) % state % tracers % array(:,k,iCell) &
@@ -218,7 +218,7 @@ module ocn_time_integration_rk4
 
               !$OMP END WORKSHARE
 
-              !$OMP DO PRIVATE(k)
+              !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
               do iCell=1,block % mesh % nCells
                  do k=1,block % mesh % maxLevelCell % array(iCell)
                  block % provis_state % tracers % array(:,k,iCell) = ( block % state % time_levs(1) % state % layerThickness % array(k,iCell) * &
@@ -269,7 +269,7 @@ module ocn_time_integration_rk4
                                    + rk_weights(rk_step) * block % tend % layerThickness % array(:,:) 
            !$OMP END WORKSHARE
 
-           !$OMP DO PRIVATE(k)
+           !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
            do iCell=1,block % mesh % nCells
               do k=1,block % mesh % maxLevelCell % array(iCell)
                  block % state % time_levs(2) % state % tracers % array(:,k,iCell) =  &
@@ -297,7 +297,7 @@ module ocn_time_integration_rk4
       ! Rescale tracers
       block => domain % blocklist
       do while(associated(block))
-        !$OMP DO PRIVATE(k)
+        !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
         do iCell = 1, block % mesh % nCells
           do k = 1, block % mesh % maxLevelCell % array(iCell)
             block % state % time_levs(2) % state % tracers % array(:, k, iCell) = block % state % time_levs(2) % state % tracers % array(:, k, iCell) &

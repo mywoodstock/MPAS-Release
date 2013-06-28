@@ -117,7 +117,7 @@ module ocn_time_integration_split
       do while (associated(block))
 
          ! Initialize * variables that are used to compute baroclinic tendencies below.
-         !$OMP DO PRIVATE(k)
+         !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
          do iEdge=1,block % mesh % nEdges
             do k=1,block % mesh % nVertLevels !maxLevelEdgeTop % array(iEdge)
 
@@ -149,7 +149,7 @@ module ocn_time_integration_split
          = block % state % time_levs(1) % state % ssh % array(:)
          !$OMP END WORKSHARE
 
-         !$OMP DO PRIVATE(k)
+         !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
          do iCell=1,block % mesh % nCells  
             do k=1,block % mesh % maxLevelCell % array(iCell)
 
@@ -234,7 +234,7 @@ module ocn_time_integration_split
                ! Put f*normalBaroclinicVelocity^{perp} in uNew as a work variable
                call ocn_fuperp(block % state % time_levs(2) % state , block % mesh)
 
-               !$OMP DO PRIVATE(k)
+               !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
                do iEdge=1,block % mesh % nEdges
                   cell1 = block % mesh % cellsOnEdge % array(1,iEdge)
                   cell2 = block % mesh % cellsOnEdge % array(2,iEdge)
@@ -324,7 +324,7 @@ module ocn_time_integration_split
                block % state % time_levs(2) % state % normalVelocity % array(:,:)  = block % state % time_levs(2) % state % normalBaroclinicVelocity % array(:,:) 
                !$OMP END WORKSHARE
 
-               !$OMP DO PRIVATE(k)
+               !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
                do iEdge=1,block % mesh % nEdges
                   do k=1,block % mesh % nVertLevels
 
@@ -355,7 +355,7 @@ module ocn_time_integration_split
                   !$OMP END WORKSHARE
                endif
 
-               !$OMP DO
+               !$OMP DO SCHEDULE(RUNTIME)
                do iCell=1,block % mesh % nCells
                   ! sshSubcycleOld = sshOld  
                     block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(iCell) &
@@ -363,7 +363,7 @@ module ocn_time_integration_split
                end do
                !$OMP END DO
 
-               !$OMP DO
+               !$OMP DO SCHEDULE(RUNTIME)
                do iEdge=1,block % mesh % nEdges
 
                   ! normalBarotropicVelocitySubcycleOld = normalBarotropicVelocityOld 
@@ -396,7 +396,7 @@ module ocn_time_integration_split
                   block => domain % blocklist
                   do while (associated(block))
 
-                     !$OMP DO PRIVATE(cell1, cell2, CoriolisTerm, i, eoe)
+                     !$OMP DO SCHEDULE(RUNTIME) PRIVATE(cell1, cell2, CoriolisTerm, i, eoe)
                      do iEdge=1,block % mesh % nEdges
 
                         cell1 = block % mesh % cellsOnEdge % array(1,iEdge)
@@ -460,7 +460,7 @@ module ocn_time_integration_split
                 ! config_btr_gam1_velWt1=0.5     flux = 1/2*(normalBarotropicVelocityNew+normalBarotropicVelocityOld)*H
                 ! config_btr_gam1_velWt1=  0     flux = normalBarotropicVelocityOld*H
 
-                !$OMP DO PRIVATE(i, iEdge, cell1, cell2, sshEdge, thicknessSum, flux)
+                !$OMP DO SCHEDULE(RUNTIME) PRIVATE(i, iEdge, cell1, cell2, sshEdge, thicknessSum, flux)
                 do iCell = 1, block % mesh % nCells
                   do i = 1, block % mesh % nEdgesOnCell % array(iCell)
                     iEdge = block % mesh % edgesOnCell % array(i, iCell)
@@ -495,7 +495,7 @@ module ocn_time_integration_split
                 end do
                 !$OMP END DO
 
-                !$OMP DO PRIVATE(cell1, cell2, sshEdge, thicknessSum, flux)
+                !$OMP DO SCHEDULE(RUNTIME) PRIVATE(cell1, cell2, sshEdge, thicknessSum, flux)
                 do iEdge=1,block % mesh % nEdges
                    cell1 = block % mesh % cellsOnEdge % array(1,iEdge)
                    cell2 = block % mesh % cellsOnEdge % array(2,iEdge)
@@ -525,7 +525,7 @@ module ocn_time_integration_split
                 !$OMP END DO
       
                 ! SSHnew = SSHold + dt/J*(-div(Flux))
-                !$OMP DO
+                !$OMP DO SCHEDULE(RUNTIME)
                 do iCell=1,block % mesh % nCells 
       
                    block % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(iCell) & 
@@ -564,7 +564,7 @@ module ocn_time_integration_split
                    block % scratch % normalVelocityTemp % array(:) = block % state % time_levs(newBtrSubcycleTime) % state % normalBarotropicVelocitySubcycle % array(:)
                    !$OMP END WORKSHARE
 
-                   !$OMP DO PRIVATE(cell1, cell2, CoriolisTerm, i, eoe, sshCell1, sshCell2)
+                   !$OMP DO SCHEDULE(RUNTIME) PRIVATE(cell1, cell2, CoriolisTerm, i, eoe, sshCell1, sshCell2)
                    do iEdge=1,block % mesh % nEdges 
                      cell1 = block % mesh % cellsOnEdge % array(1,iEdge)
                      cell2 = block % mesh % cellsOnEdge % array(2,iEdge)
@@ -626,7 +626,7 @@ module ocn_time_integration_split
                   ! config_btr_gam3_velWt2=0.5     flux = 1/2*(normalBarotropicVelocityNew+normalBarotropicVelocityOld)*H
                   ! config_btr_gam3_velWt2=  0     flux = normalBarotropicVelocityOld*H
 
-                  !$OMP DO PRIVATE(i, iEdge, cell1, cell2, sshCell1, sshCell2, sshEdge, thicknessSum, flux)
+                  !$OMP DO SCHEDULE(RUNTIME) PRIVATE(i, iEdge, cell1, cell2, sshCell1, sshCell2, sshEdge, thicknessSum, flux)
                   do iCell = 1, block % mesh % nCells
                     do i = 1, block % mesh % nEdgesOnCell % array(iCell)
                       iEdge = block % mesh % edgesOnCell % array(i, iCell)
@@ -666,7 +666,7 @@ module ocn_time_integration_split
                   end do
                   !$OMP END DO
 
-                  !$OMP DO PRIVATE(cell1, cell2, sshCell1, sshCell2, sshEdge, thicknessSum, flux)
+                  !$OMP DO SCHEDULE(RUNTIME) PRIVATE(cell1, cell2, sshCell1, sshCell2, sshEdge, thicknessSum, flux)
                   do iEdge=1,block % mesh % nEdges
                      cell1 = block % mesh % cellsOnEdge % array(1,iEdge)
                      cell2 = block % mesh % cellsOnEdge % array(2,iEdge)
@@ -699,7 +699,7 @@ module ocn_time_integration_split
                   !$OMP END DO
       
                   ! SSHnew = SSHold + dt/J*(-div(Flux))
-                  !$OMP DO
+                  !$OMP DO SCHEDULE(RUNTIME)
                   do iCell=1,block % mesh % nCells 
                     block % state % time_levs(newBtrSubcycleTime) % state % sshSubcycle % array(iCell) & 
                           = block % state % time_levs(oldBtrSubcycleTime) % state % sshSubcycle % array(iCell) & 
@@ -731,7 +731,7 @@ module ocn_time_integration_split
                   ! This accumulates the sum.
                   ! If the Barotropic Coriolis iteration is limited to one, this could 
                   ! be merged with the above code.
-                  !$OMP DO
+                  !$OMP DO SCHEDULE(RUNTIME)
                   do iEdge=1,block % mesh % nEdges 
       
                        block % state % time_levs(2) % state % normalBarotropicVelocity % array(iEdge) &
@@ -756,7 +756,7 @@ module ocn_time_integration_split
             block => domain % blocklist
             do while (associated(block))
       
-               !$OMP DO
+               !$OMP DO SCHEDULE(RUNTIME)
                do iEdge=1,block % mesh % nEdges
                   block % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) = block % state % time_levs(1) % state % barotropicThicknessFlux % array(iEdge) &
                       / (config_n_btr_subcycles*config_btr_subcycle_loop_factor)
@@ -801,7 +801,7 @@ module ocn_time_integration_split
                   ucorr_coef = 0
                endif
 
-               !$OMP DO PRIVATE(normalThicknessFluxSum, thicknessSum, k, uCorr)
+               !$OMP DO SCHEDULE(RUNTIME) PRIVATE(normalThicknessFluxSum, thicknessSum, k, uCorr)
                do iEdge=1,block % mesh % nEdges
 
                   ! velocity for uCorrection is normalBarotropicVelocity + normalBaroclinicVelocity + uBolus
@@ -912,7 +912,7 @@ module ocn_time_integration_split
 
                ! Only need T & S for earlier iterations,
                ! then all the tracers needed the last time through.
-               !$OMP DO PRIVATE(k, temp_h, i, temp)
+               !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k, temp_h, i, temp)
                do iCell=1,block % mesh % nCells
                   ! sshNew is a pointer, defined above.
                   do k=1,block % mesh % maxLevelCell % array(iCell)
@@ -946,7 +946,7 @@ module ocn_time_integration_split
                end do ! iCell
                !$OMP END DO
 
-               !$OMP DO PRIVATE(k)
+               !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
                do iEdge=1,block % mesh % nEdges
 
                   do k=1,block % mesh % nVertLevels
@@ -975,7 +975,7 @@ module ocn_time_integration_split
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             elseif (split_explicit_step == config_n_ts_iter) then
 
-               !$OMP DO PRIVATE(k, i)
+               !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k, i)
                do iCell=1,block % mesh % nCells
                   do k=1,block % mesh % maxLevelCell % array(iCell)
 
@@ -1006,7 +1006,7 @@ module ocn_time_integration_split
                ! note that normalBaroclinicVelocity is recomputed at the beginning of the next timestep due to Imp Vert mixing,
                ! so normalBaroclinicVelocity does not have to be recomputed here.
       
-               !$OMP DO PRIVATE(k)
+               !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
                do iEdge=1,block % mesh % nEdges
                   do k=1,block % mesh % maxLevelEdgeTop % array(iEdge)
                        block % state % time_levs(2) % state % normalVelocity    % array(k,iEdge) &

@@ -171,7 +171,7 @@ contains
       !$OMP END WORKSHARE
 
       ! first del2: div(h \nabla \phi) at cell center
-      !$OMP DO PRIVATE(invAreaCell1, i, iEdge, invdcEdge, cell1, cell2, k, iTracer, r_tmp1, r_tmp2)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(invAreaCell1, i, iEdge, invdcEdge, cell1, cell2, k, iTracer, r_tmp1, r_tmp2)
       do iCell = 1, nCells
         invAreaCell1 = 1.0 / areaCell(iCell)
         do i = 1, nEdgesOnCell(iCell)
@@ -194,7 +194,7 @@ contains
       !$OMP END DO
 
       ! second del2: div(h \nabla [delsq_tracer]) at cell center
-      !$OMP DO PRIVATE(invAreaCell1, i, iEdge, cell1, cell2, invdcEdge, k, iTracer, tracer_turb_flux, flux)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(invAreaCell1, i, iEdge, cell1, cell2, invdcEdge, k, iTracer, tracer_turb_flux, flux)
       do iCell = 1, nCells
         invAreaCell1 = 1.0 / areaCell(iCell)
         do i = 1, nEdgesOnCell(iCell)

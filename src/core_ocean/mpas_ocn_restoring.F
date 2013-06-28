@@ -132,7 +132,7 @@ contains
 
       k = 1  ! restoring only in top layer
 
-      !$OMP DO
+      !$OMP DO SCHEDULE(RUNTIME)
       do iCell=1,nCellsSolve
         tend(indexT, k, iCell) = tend(indexT, k, iCell) - layerThickness(k,iCell)*(tracers(indexT, k, iCell) - temperatureRestore(iCell)) * invTemp
         tend(indexS, k, iCell) = tend(indexS, k, iCell) - layerThickness(k,iCell)*(tracers(indexS, k, iCell) - salinityRestore(iCell)) * invSalinity

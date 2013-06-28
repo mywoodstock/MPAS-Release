@@ -96,7 +96,7 @@ contains
 
       err = 0
 
-      !$OMP DO PRIVATE(k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
       do iCell=1,nCells
          do k=1,maxLevelCell(iCell)
             ! Linear equation of state

@@ -177,7 +177,7 @@ contains
       !$OMP END WORKSHARE
 
       !Compute delsq_u
-      !$OMP DO PRIVATE(cell1, cell2, vertex1, vertex2, invDcEdge, invDvEdge, k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(cell1, cell2, vertex1, vertex2, invDcEdge, invDvEdge, k)
       do iEdge = 1, nEdges
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
@@ -197,7 +197,7 @@ contains
       !$OMP END DO
 
       ! Compute delsq_relativeVorticity
-      !$OMP DO PRIVATE(invAreaTri1, i, iEdge, k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(invAreaTri1, i, iEdge, k)
       do iVertex = 1, nVertices
          invAreaTri1 = 1.0 / areaTriangle(iVertex)
          do i = 1, vertexDegree
@@ -210,7 +210,7 @@ contains
       !$OMP END DO
 
       ! Compute delsq_divergence
-      !$OMP DO PRIVATE(invAreaCell1, i, iEdge, k)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(invAreaCell1, i, iEdge, k)
       do iCell = 1, nCells
          invAreaCell1 = 1.0 / areaCell(iCell)
          do i = 1, nEdgesOnCell(iCell)
@@ -224,7 +224,7 @@ contains
 
       ! Compute - \kappa \nabla^4 u 
       ! as  \nabla div(\nabla^2 u) + k \times \nabla ( k \cross curl(\nabla^2 u) )
-      !$OMP DO PRIVATE(cell1, cell2, vertex1, vertex2, invDcEdge, invDvEdge, r_tmp, k, u_diffusion)
+      !$OMP DO SCHEDULE(RUNTIME) PRIVATE(cell1, cell2, vertex1, vertex2, invDcEdge, invDvEdge, r_tmp, k, u_diffusion)
       do iEdge=1,nEdgesSolve
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
