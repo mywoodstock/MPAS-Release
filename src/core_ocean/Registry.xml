@@ -1125,5 +1125,7 @@
 		/>
 		<var name="high_order_vert_flux" persistence="scratch" type="real" dimensions="nVertLevelsP1 nCells"
 		/>
+		<var name="normalVelocityTemp" persistence="scratch" type="real" dimensions="nEdges"
+		/>
     </var_struct>
 </registry>
