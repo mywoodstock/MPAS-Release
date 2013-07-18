@@ -25,6 +25,7 @@ module mpas_core
    use mpas_timekeeping
    use mpas_dmpar
    use mpas_timer
+   use mpas_units
 
    use ocn_global_diagnostics
    use ocn_time_integration
@@ -271,14 +272,14 @@ module mpas_core
          if (trim(config_stop_time) /= "none") then
             call mpas_set_time(curr_time=stopTime, dateTimeString=config_stop_time, ierr=ierr)
             if(startTime + runduration /= stopTime) then
-               write(0,*) 'Warning: config_run_duration and config_stop_time are inconsitent: using config_run_duration.'
+               write(stderrUnit,*) 'Warning: config_run_duration and config_stop_time are inconsitent: using config_run_duration.'
             end if
          end if
       else if (trim(config_stop_time) /= "none") then
          call mpas_set_time(curr_time=stopTime, dateTimeString=config_stop_time, ierr=ierr)
          call mpas_create_clock(clock, startTime=startTime, timeStep=timeStep, stopTime=stopTime, ierr=ierr)
       else
-          write(0,*) 'Error: Neither config_run_duration nor config_stop_time were specified.'
+          write(stderrUnit,*) 'Error: Neither config_run_duration nor config_stop_time were specified.'
           call mpas_dmpar_finalize(domain % dminfo)
       end if
 
@@ -430,7 +431,7 @@ module mpas_core
 
       currTime = mpas_get_clock_time(clock, MPAS_NOW, ierr)
       call mpas_get_time(curr_time=currTime, dateTimeString=timeStamp, ierr=ierr)
-      write(0,*) 'Initial time ', trim(timeStamp)
+      write(stderrUnit,*) 'Initial time ', trim(timeStamp)
 
       if (config_write_output_on_startup) then
          call ocn_write_output_frame(output_obj, output_frame, domain)
@@ -452,7 +453,7 @@ module mpas_core
 
          currTime = mpas_get_clock_time(clock, MPAS_NOW, ierr)
          call mpas_get_time(curr_time=currTime, dateTimeString=timeStamp, ierr=ierr)
-         write(0,*) 'Doing timestep ', trim(timeStamp)
+         write(stderrUnit,*) 'Doing timestep ', trim(timeStamp)
    
          block_ptr => domain % blocklist
          do while(associated(block_ptr))
@@ -638,7 +639,7 @@ module mpas_core
 
 !        block_ptr => domain % blocklist
 !        if (associated(block_ptr % next)) then
-!           write(0,*) 'Error: computeGlobalDiagnostics assumes ',&
+!           write(stderrUnit,*) 'Error: computeGlobalDiagnostics assumes ',&
 !                      'that there is only one block per processor.'
 !        end if
    
@@ -813,7 +814,7 @@ module mpas_core
             enddo
 
             if (.not. consistentSSH) then
-               write(0,*) 'Warning: SSH is not consistent. Most likely, initial layerThickness does not match bottomDepth.'
+               write(stderrUnit,*) 'Warning: SSH is not consistent. Most likely, initial layerThickness does not match bottomDepth.'
             end if
          endif
 

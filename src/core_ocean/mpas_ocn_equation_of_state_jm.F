@@ -23,6 +23,7 @@ module ocn_equation_of_state_jm
    use mpas_kind_types
    use mpas_grid_types
    use mpas_configure
+   use mpas_units
 
    implicit none
    private
@@ -244,7 +245,7 @@ contains
       if (displacement_type == 'absolute' .and.   &
          (k_displaced <= 0 .or. k_displaced > nVertLevels) ) then
 
-         write(0,*) 'Abort: In equation_of_state_jm', &
+         write(stderrUnit,*) 'Abort: In equation_of_state_jm', &
              ' k_displaced must be between 1 and nVertLevels for ', &
              'displacement_type = absolute'
          call mpas_dmpar_abort(dminfo)

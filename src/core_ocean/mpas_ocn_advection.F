@@ -11,6 +11,7 @@ module ocn_advection
    use mpas_grid_types
    use mpas_configure
    use mpas_constants
+   use mpas_units
 
 
    contains
@@ -397,21 +398,21 @@ module ocn_advection
       if (debug) stop
 
 
-!      write(0,*) ' check for deriv2 coefficients, iEdge 4 '
+!      write(stderrUnit,*) ' check for deriv2 coefficients, iEdge 4 '
 !
 !      iEdge = 4
 !      j = 1
 !      iCell = grid % cellsOnEdge % array(1,iEdge)
-!      write(0,*) ' j, icell, coef ',j,iCell,deriv_two(j,1,iEdge)
+!      write(stderrUnit,*) ' j, icell, coef ',j,iCell,deriv_two(j,1,iEdge)
 !      do j=2,7
-!         write(0,*) ' j, icell, coef ',j,grid % CellsOnCell % array(j-1,iCell),deriv_two(j,1,iEdge)
+!         write(stderrUnit,*) ' j, icell, coef ',j,grid % CellsOnCell % array(j-1,iCell),deriv_two(j,1,iEdge)
 !      end do
 !
 !      j = 1
 !      iCell = grid % cellsOnEdge % array(2,iEdge)
-!      write(0,*) ' j, icell, coef ',j,iCell,deriv_two(j,2,iEdge)
+!      write(stderrUnit,*) ' j, icell, coef ',j,iCell,deriv_two(j,2,iEdge)
 !      do j=2,7
-!         write(0,*) ' j, icell, coef ',j,grid % CellsOnCell % array(j-1,iCell),deriv_two(j,2,iEdge)
+!         write(stderrUnit,*) ' j, icell, coef ',j,grid % CellsOnCell % array(j-1,iCell),deriv_two(j,2,iEdge)
 !      end do
 !      stop
 
@@ -579,7 +580,7 @@ module ocn_advection
       cz = 0.5*(az + bz)
    
       if (cx == 0. .and. cy == 0. .and. cz == 0.) then
-         write(0,*) 'Error: arc_bisect: A and B are diametrically opposite'
+         write(stderrUnit,*) 'Error: arc_bisect: A and B are diametrically opposite'
       else
          d = sqrt(cx*cx + cy*cy + cz*cz)
          cx = r * cx / d
@@ -609,7 +610,7 @@ module ocn_advection
       integer :: i,j
    
       if ( (ne<n) .or. (ne<m) ) then
-         write(6,*) ' error in poly_fit_2 inversion ',m,n,ne
+         write(stdoutUnit,*) ' error in poly_fit_2 inversion ',m,n,ne
          stop
       end if
    
@@ -640,10 +641,10 @@ module ocn_advection
       b_out(1:n,1:m) = b(1:n,1:m)
 
 !     do i=1,n
-!        write(6,*) ' i, indx ',i,indx(i)
+!        write(stdoutUnit,*) ' i, indx ',i,indx(i)
 !     end do
 !
-!     write(6,*) ' '
+!     write(stdoutUnit,*) ' '
 
    end subroutine ocn_poly_fit_2!}}}
 
@@ -819,7 +820,7 @@ end subroutine ocn_elgs!}}}
 
       logical, parameter :: debug = .false.
 
-      if (debug) write(0,*) ' in def weight calc '
+      if (debug) write(stderrUnit,*) ' in def weight calc '
 
       defc_a => grid % defc_a % array
       defc_b => grid % defc_b % array
@@ -831,11 +832,11 @@ end subroutine ocn_elgs!}}}
 
       pii = 2.*asin(1.0)
 
-      if (debug) write(0,*) ' beginning cell loop '
+      if (debug) write(stderrUnit,*) ' beginning cell loop '
 
       do iCell = 1, grid % nCells
 
-         if (debug) write(0,*) ' cell loop ', iCell
+         if (debug) write(stderrUnit,*) ' cell loop ', iCell
 
          cell_list(1) = iCell
          do i=2, grid % nEdgesOnCell % array(iCell)+1
@@ -845,7 +846,7 @@ end subroutine ocn_elgs!}}}
 
 !  check to see if we are reaching outside the halo
 
-         if (debug) write(0,*) ' points ', n
+         if (debug) write(stderrUnit,*) ' points ', n
 
          do_the_cell = .true.
          do i=1,n
@@ -941,7 +942,7 @@ end subroutine ocn_elgs!}}}
             area_cell = area_cell + 0.25*(xp(i)+xp(ip1))*(yp(ip1)-yp(i)) - 0.25*(yp(i)+yp(ip1))*(xp(ip1)-xp(i))
             area_cellt = area_cellt + (0.25*(xp(i)+xp(ip1))*cos(thetat(i)) + 0.25*(yp(i)+yp(ip1))*sin(thetat(i)))*dl
          end do
-         if (debug) write(0,*) ' area_cell, area_cellt ',area_cell, area_cellt,area_cell-area_cellt
+         if (debug) write(stderrUnit,*) ' area_cell, area_cellt ',area_cell, area_cellt,area_cell-area_cellt
 
          do i=1,n-1
             ip1 = i+1
@@ -961,7 +962,7 @@ end subroutine ocn_elgs!}}}
 
       end do
 
-      if (debug) write(0,*) ' exiting def weight calc '
+      if (debug) write(stderrUnit,*) ' exiting def weight calc '
 
    end subroutine ocn_initialize_deformation_weights!}}}
 
