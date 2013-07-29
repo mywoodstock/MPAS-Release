@@ -74,7 +74,7 @@ module mpas_units
 
 !***********************************************************************
 !
-!  routine mpas_unit_set_stdout
+!  routine mpas_units_set_stdout
 !
 !> \brief   MPAS Set stdout unit number
 !> \author  Doug Jacobsen
@@ -83,7 +83,7 @@ module mpas_units
 !> This routine sets the unit number for stdout
 !
 !-----------------------------------------------------------------------
-    subroutine mpas_unit_set_stdout(stdoutUnit_in)!{{{
+    subroutine mpas_units_set_stdout(stdoutUnit_in)!{{{
         integer, intent(in) :: stdoutUnit_in
 
 
@@ -93,11 +93,11 @@ module mpas_units
             unitsInUse(stdoutUnit) = .true.
         end if
 
-    end subroutine mpas_unit_set_stdout!}}}
+    end subroutine mpas_units_set_stdout!}}}
 
 !***********************************************************************
 !
-!  routine mpas_unit_set_stderr
+!  routine mpas_units_set_stderr
 !
 !> \brief   MPAS Set stderr unit number
 !> \author  Doug Jacobsen
@@ -106,7 +106,7 @@ module mpas_units
 !> This routine sets the unit number for stderr
 !
 !-----------------------------------------------------------------------
-    subroutine mpas_unit_set_stderr(stderrUnit_in)!{{{
+    subroutine mpas_units_set_stderr(stderrUnit_in)!{{{
         integer, intent(in) :: stderrUnit_in
 
 
@@ -116,7 +116,7 @@ module mpas_units
             unitsInUse(stderrUnit) = .true.
         end if
 
-    end subroutine mpas_unit_set_stderr!}}}
+    end subroutine mpas_units_set_stderr!}}}
 
 !***********************************************************************
 !
