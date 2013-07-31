@@ -50,11 +50,15 @@ module ocn_time_average_coupled
         salinityState => forcing % salinityState % array
         zonalVelocityState => forcing % zonalVelocityState % array
         meridionalVelocityState => forcing % meridionalVelocityState % array
+        zonalSSHGradientState => forcing % zonalSSHGradientState % array
+        meridionalSSHGradientState => forcing % meridionalSSHGradientState % array
 
         temperatureState(:) = 0.0_RKIND
         salinityState(:) = 0.0_RKIND
         zonalVelocityState(:) = 0.0_RKIND
         meridionalVelocityState(:) = 0.0_RKIND
+        zonalSSHGradientState(:) = 0.0_RKIND
+        meridionalSSHGradientState(:) = 0.0_RKIND
         forcing % nAccumulatedCoupled % scalar = 0
 #endif
 
@@ -76,7 +80,7 @@ module ocn_time_average_coupled
         type (forcing_type), intent(in) :: forcing
 
 #ifdef MPAS_CESM
-        real (kind=RKIND), dimension(:,:), pointer :: zonalVelocity, meridionalVelocity
+        real (kind=RKIND), dimension(:,:), pointer :: zonalVelocity, meridionalVelocity, zonalGradSSH, meridionalGradSSH
         real (kind=RKIND), dimension(:,:,:), pointer :: tracers
         integer :: index_temperature, index_salinity
 
@@ -87,18 +91,24 @@ module ocn_time_average_coupled
         index_salinity = state % index_salinity
         zonalVelocity => state % normalVelocityZonal % array
         meridionalVelocity => state % normalVelocityMeridional % array
+        zonalGradSSH => state % gradSSHZonal % array
+        meridionalGradSSH => state % gradSSHMeridional % array
         tracers => state % tracers % array
 
         temperatureState => forcing % temperatureState % array
         salinityState => forcing % salinityState % array
         zonalVelocityState => forcing % zonalVelocityState % array
         meridionalVelocityState => forcing % meridionalVelocityState % array
+        zonalSSHGradientState => forcing % zonalSSHGradientState % array
+        meridionalSSHGradientState => forcing % meridionalSSHGradientState % array
 
         write(0,*) 'Tk = ', T0_Kelvin
         temperatureState(:) = temperatureState(:) + tracers(index_temperature, 1, :) + T0_Kelvin
         salinityState(:) = salinityState(:) + tracers(index_salinity, 1, :)
         zonalVelocityState(:) = zonalVelocityState(:) + zonalVelocity(1, :)
         meridionalVelocityState(:) = meridionalVelocityState(:) + meridionalVelocity(1, :)
+        zonalSSHGradientState(:) = zonalSSHGradientState(:) + zonalGradSSH(1,:)
+        meridionalSSHGradientState(:) = meridionalSSHGradientState(:) + meridionalGradSSH(1,:)
         forcing % nAccumulatedCoupled % scalar = forcing % nAccumulatedCoupled % scalar + 1
 #endif
 
@@ -126,12 +136,16 @@ module ocn_time_average_coupled
         salinityState => forcing % salinityState % array
         zonalVelocityState => forcing % zonalVelocityState % array
         meridionalVelocityState => forcing % meridionalVelocityState % array
+        zonalSSHGradientState => forcing % zonalSSHGradientState % array
+        meridionalSSHGradientState => forcing % meridionalSSHGradientState % array
 
         if(forcing % nAccumulatedCoupled % scalar > 0) then
            temperatureState(:) = temperatureState(:) / forcing % nAccumulatedCoupled % scalar
            salinityState(:) = salinityState(:) / forcing % nAccumulatedCoupled % scalar
            zonalVelocityState(:) = zonalVelocityState(:) / forcing % nAccumulatedCoupled % scalar
            meridionalVelocityState(:) = meridionalVelocityState(:) / forcing % nAccumulatedCoupled % scalar
+           zonalSSHGradientState(:) = zonalSSHGradientState(:) / forcing % nAccumulatedCoupled % scalar
+           meridionalSSHGradientState(:) = meridionalSSHGradientState(:) / forcing % nAccumulatedCoupled % scalar
            forcing % nAccumulatedCoupled % scalar = 0
         end if
 #endif

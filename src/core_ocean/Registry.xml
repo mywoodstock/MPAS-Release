@@ -743,6 +743,26 @@
 		<var name="avgVertVelocityTop" type="real" dimensions="nVertLevelsP1 nCells Time" streams="o" units="m s^{-1}"
 		     description="time-averaged vertical velocity at top of cell"
 		/>
+#ifdef MPAS_CESM
+        <var name="gradSSH" type="real" dimensions="nVertLevels nEdges Time" units=""
+             description="Gradient of sea surface height at edges."
+        />
+        <var name="gradSSHX" type="real" dimensions="nVertLevels nCells Time" units=""
+             description="X Component of the gradient of sea surface height at cell centers."
+        />
+        <var name="gradSSHY" type="real" dimensions="nVertLevels nCells Time" units=""
+             description="Y Component of the gradient of sea surface height at cell centers."
+        />
+        <var name="gradSSHZ" type="real" dimensions="nVertLevels nCells Time" units=""
+             description="Z Component of the gradient of sea surface height at cell centers."
+        />
+        <var name="gradSSHZonal" type="real" dimensions="nVertLevels nCells Time" units=""
+             description="Zonal Component of the gradient of sea surface height at cell centers."
+        />
+        <var name="gradSSHMeridional" type="real" dimensions="nVertLevels nCells Time" units=""
+             description="Meridional Component of the gradient of sea surface height at cell centers."
+        />
+#endif
 	</var_struct>
 	<var_struct name="mesh" time_levs="0">
 		<var name="latCell" type="real" dimensions="nCells" streams="iro" units="radians"

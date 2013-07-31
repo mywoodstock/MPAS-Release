@@ -320,6 +320,16 @@ module ocn_time_integration_rk4
                           block % state % time_levs(2) % state % normalVelocityMeridional % array    &
                          )
 
+#ifdef MPAS_CESM
+         call mpas_reconstruct(block % mesh, block % state % time_levs(2) % state % gradSSH % array,          &
+                          block % state % time_levs(2) % state % gradSSHX % array,            &
+                          block % state % time_levs(2) % state % gradSSHY % array,            &
+                          block % state % time_levs(2) % state % gradSSHZ % array,            &
+                          block % state % time_levs(2) % state % gradSSHZonal % array,        &
+                          block % state % time_levs(2) % state % gradSSHMeridional % array    &
+                         )
+#endif
+
          call ocn_time_average_accumulate(block % state % time_levs(2) % state, block % state % time_levs(1) % state)
          call ocn_time_average_coupled_accumulate(block % state % time_levs(2) % state, block % forcing)
 
