@@ -102,7 +102,6 @@ module ocn_time_average_coupled
         zonalSSHGradientState => forcing % zonalSSHGradientState % array
         meridionalSSHGradientState => forcing % meridionalSSHGradientState % array
 
-        write(0,*) 'Tk = ', T0_Kelvin
         temperatureState(:) = temperatureState(:) + tracers(index_temperature, 1, :) + T0_Kelvin
         salinityState(:) = salinityState(:) + tracers(index_salinity, 1, :)
         zonalVelocityState(:) = zonalVelocityState(:) + zonalVelocity(1, :)
