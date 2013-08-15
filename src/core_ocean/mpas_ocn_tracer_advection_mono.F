@@ -77,6 +77,7 @@ module mpas_ocn_tracer_advection_mono
       real (kind=RKIND) :: flux, tracer_weight, invDvEdge, invAreaCell1, invAreaCell2
       real (kind=RKIND) :: cur_max, cur_min, new_max, new_min
       real (kind=RKIND) :: verticalWeightK, verticalWeightKm1
+      real (kind=RKIND) :: coef, coef_2nd, coef_3rd
       real (kind=RKIND), dimension(:), pointer :: dvEdge, areaCell
       real (kind=RKIND), dimension(:,:), pointer :: adv_coefs, adv_coefs_2nd, adv_coefs_3rd
       real (kind=RKIND), dimension(:,:), pointer :: tracer_cur, tracer_new, upwind_tendency, inv_h_new, tracer_max, tracer_min
@@ -183,6 +184,7 @@ module mpas_ocn_tracer_advection_mono
         ! Initialize variables for use in this iTracer iteration
         !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
         do iCell = 1, nCells
+          !DIR$ IVDEP
           do k=1, maxLevelCell(iCell)
             tracer_cur(k,iCell) = tracers(iTracer,k,iCell)
             upwind_tendency(k, iCell) = 0.0
@@ -250,9 +252,13 @@ module mpas_ocn_tracer_advection_mono
         do iEdge = 1, nEdges
           do i = 1, nAdvCellsForEdge(iEdge)
             iCell = advCellsForEdge(i,iEdge)
+            coef = adv_coefs(i,iEdge)
+            coef_2nd = adv_coefs_2nd(i,iEdge)
+            coef_3rd = adv_coefs_3rd(i,iEdge)
+            !DIR$ IVDEP
             do k = 1, maxLevelCell(iCell)
-              tracer_weight = lowOrderAdvectionMask(k, iEdge) * adv_coefs_2nd(i,iEdge) & 
-                            + highOrderAdvectionMask(k, iEdge) * (adv_coefs(i,iEdge) + coef_3rd_order*sign(1.0_RKIND,normalThicknessFlux(k,iEdge))*adv_coefs_3rd(i,iEdge))
+              tracer_weight = lowOrderAdvectionMask(k, iEdge) * coef_2nd & 
+                            + highOrderAdvectionMask(k, iEdge) * (coef + coef_3rd_order*sign(1.0_RKIND,normalThicknessFlux(k,iEdge))*coef_3rd)
 
               tracer_weight = normalThicknessFlux(k,iEdge)*tracer_weight
               high_order_horiz_flux(k,iEdge) = high_order_horiz_flux(k,iEdge) + tracer_weight* tracer_cur(k,iCell)
@@ -283,6 +289,7 @@ module mpas_ocn_tracer_advection_mono
           !          it is positive.
           ! flux_outgoing contains the total remaining high order flux out of iCell
           !           it is negative
+          !DIR$ IVDEP
           do k = 1, maxLevelCell(iCell)
             ! dwj 02/03/12 Ocean and Atmosphere are different in vertical
 !           flux_incoming (k,iCell) = -(min(0.0_RKIND,high_order_vert_flux(k+1,iCell))-max(0.0_RKIND,high_order_vert_flux(k,iCell)))
@@ -309,6 +316,7 @@ module mpas_ocn_tracer_advection_mono
           invAreaCell1 = 1.0 / areaCell(cell1)
           invAreaCell2 = 1.0 / areaCell(cell2)
 
+          !DIR$ IVDEP
           do k = 1, maxLevelEdgeTop(iEdge)
             flux_upwind = dvEdge(iEdge) * (max(0.0_RKIND,normalThicknessFlux(k,iEdge))*tracer_cur(k,cell1) + min(0.0_RKIND,normalThicknessFlux(k,iEdge))*tracer_cur(k,cell2))
             high_order_horiz_flux(k,iEdge) = high_order_horiz_flux(k,iEdge) - flux_upwind
@@ -323,6 +331,8 @@ module mpas_ocn_tracer_advection_mono
             iEdge = edgesOnCell(i, iCell)
             cell1 = cellsOnEdge(1,iEdge)
             cell2 = cellsOnEdge(2,iEdge)
+
+            !DIR$ IVDEP
             do k = 1, maxLevelEdgeTop(iEdge)
               flux_upwind = dvEdge(iEdge) * (max(0.0_RKIND,normalThicknessFlux(k,iEdge))*tracer_cur(k,cell1) + min(0.0_RKIND,normalThicknessFlux(k,iEdge))*tracer_cur(k,cell2))
 
@@ -344,6 +354,7 @@ module mpas_ocn_tracer_advection_mono
         ! Factors are placed in the flux_incoming and flux_outgoing arrays
         !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k, tracer_min_new, tracer_max_new, tracer_upwind_new, scale_factor)
         do iCell = 1, nCells
+          !DIR$ IVDEP
           do k = 1, maxLevelCell(iCell)
             tracer_min_new = (tracer_cur(k,iCell)*layerThickness(k,iCell) + dt*(upwind_tendency(k,iCell)+flux_outgoing(k,iCell))) * inv_h_new(k,iCell)
             tracer_max_new = (tracer_cur(k,iCell)*layerThickness(k,iCell) + dt*(upwind_tendency(k,iCell)+flux_incoming(k,iCell))) * inv_h_new(k,iCell)
@@ -366,6 +377,7 @@ module mpas_ocn_tracer_advection_mono
         do iEdge = 1, nEdges
           cell1 = cellsOnEdge(1,iEdge)
           cell2 = cellsOnEdge(2,iEdge)
+          !DIR$ IVDEP
           do k = 1, maxLevelEdgeTop(iEdge)
             flux = high_order_horiz_flux(k,iEdge)
             flux = max(0.0_RKIND,flux) * min(flux_outgoing(k,cell1), flux_incoming(k,cell2)) &
@@ -381,6 +393,7 @@ module mpas_ocn_tracer_advection_mono
         ! rescale the high order vertical flux
         !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k, flux)
         do iCell = 1, nCellsSolve
+          !DIR$ IVDEP
           do k = 2, maxLevelCell(iCell)
             flux =  high_order_vert_flux(k,iCell)
             ! dwj 02/03/12 Ocean and Atmosphere are different in vertical.
@@ -402,6 +415,7 @@ module mpas_ocn_tracer_advection_mono
           invAreaCell1 = 1.0 / areaCell(iCell)
           do i = 1, nEdgesOnCell(iCell)
             iEdge = edgesOnCell(i, iCell)
+            !DIR$ IVDEP
             do k = 1, maxLevelEdgeTop(iEdge)
               tend(iTracer, k, iCell) = tend(iTracer, k, iCell) + edgeSignOnCell(i, iCell) * high_order_horiz_flux(k, iEdge) * invAreaCell1
 
@@ -419,6 +433,7 @@ module mpas_ocn_tracer_advection_mono
         ! Accumulate the scaled high order vertical tendencies, and the upwind tendencies
         !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
         do iCell = 1, nCellsSolve
+          !DIR$ IVDEP
           do k = 1,maxLevelCell(iCell)
             tend(iTracer, k, iCell) = tend(iTracer, k, iCell) + (high_order_vert_flux(k+1, iCell) - high_order_vert_flux(k, iCell)) + upwind_tendency(k,iCell)
 
