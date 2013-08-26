@@ -166,31 +166,31 @@ module mpas_core
 
       if (.not.config_do_restart) call ocn_init_split_timestep(domain)
 
-      write (0,'(a,a)') ' Vertical coordinate movement is: ',trim(config_vert_coord_movement)
+      write (stderrUnit,'(a,a)') ' Vertical coordinate movement is: ',trim(config_vert_coord_movement)
 
       if (config_vert_coord_movement.ne.'isopycnal'.and. &
           config_vert_coord_movement.ne.'fixed'.and. &
           config_vert_coord_movement.ne.'uniform_stretching'.and. &
           config_vert_coord_movement.ne.'user_specified') then
-         write (0,*) ' Incorrect choice of config_vert_coord_movement.'
+         write (stderrUnit,*) ' Incorrect choice of config_vert_coord_movement.'
          call mpas_dmpar_abort(dminfo)
       endif
 
-      write (0,'(a,a)') ' Pressure type is: ',trim(config_pressure_gradient_type)
+      write (stderrUnit,'(a,a)') ' Pressure type is: ',trim(config_pressure_gradient_type)
       if (config_pressure_gradient_type.ne.'pressure_and_zmid'.and. &
           config_pressure_gradient_type.ne.'MontgomeryPotential') then
-         write (0,*) ' Incorrect choice of config_pressure_gradient_type.'
+         write (stderrUnit,*) ' Incorrect choice of config_pressure_gradient_type.'
          call mpas_dmpar_abort(dminfo)
       endif
 
       if(config_vert_coord_movement .ne. 'isopycnal' .and. config_pressure_gradient_type .eq. 'MontgomeryPotential') then
-         write (0,*) ' Incorrect combination of config_vert_coord_movement and config_pressure_gradient_type'
+         write (stderrUnit,*) ' Incorrect combination of config_vert_coord_movement and config_pressure_gradient_type'
          call mpas_dmpar_abort(dminfo)
       end if
 
       if (config_filter_btr_mode.and. &
           config_vert_coord_movement.ne.'fixed')then
-         write (0,*) 'filter_btr_mode has only been tested with'// &
+         write (stderrUnit,*) 'filter_btr_mode has only been tested with'// &
             ' config_vert_coord_movement=fixed.'
          call mpas_dmpar_abort(dminfo)
       endif
@@ -734,8 +734,8 @@ module mpas_core
 
           if (config_alter_ICs_for_pbcs.eq.'zlevel_pbcs_on') then
 
-            write (0,'(a)') ' Altering bottomDepth to avoid very thin cells.'
-            write (0,'(a)') ' Altering layerThickness and tracer initial conditions to conform with partial bottom cells.'
+            write (stderrUnit,'(a)') ' Altering bottomDepth to avoid very thin cells.'
+            write (stderrUnit,'(a)') ' Altering layerThickness and tracer initial conditions to conform with partial bottom cells.'
 
             allocate(minBottomDepth(nVertLevels),minBottomDepthMid(nVertLevels),zMidZLevel(nVertLevels))
 
@@ -796,7 +796,7 @@ module mpas_core
 
           else
 
-             write (0,*) ' Incorrect choice of config_alter_ICs_for_pbcs.'
+             write (stderrUnit,*) ' Incorrect choice of config_alter_ICs_for_pbcs.'
              call mpas_dmpar_abort(dminfo)
 
           endif
@@ -809,8 +809,8 @@ module mpas_core
                if (abs(sum(layerThickness(1:maxLevelCell(iCell),iCell))-bottomDepth(iCell))>2.0) then
                   consistentSSH = .false.
 #ifdef MPAS_DEBUG
-                  write (0,'(a)') ' Warning: abs(sum(h)-bottomDepth)>2m.  Most likely, initial layerThickness does not match bottomDepth.'
-                  write (0,*) ' iCell, K=maxLevelCell(iCell), bottomDepth(iCell),sum(h),bottomDepth: ', &
+                  write (stderrUnit,'(a)') ' Warning: abs(sum(h)-bottomDepth)>2m.  Most likely, initial layerThickness does not match bottomDepth.'
+                  write (stderrUnit,*) ' iCell, K=maxLevelCell(iCell), bottomDepth(iCell),sum(h),bottomDepth: ', &
                                 iCell, maxLevelCell(iCell), bottomDepth(iCell),sum(layerThickness(1:maxLevelCell(iCell),iCell)),bottomDepth(iCell), &
                                 layerThickness(maxLevelCell(iCell),iCell)
 #endif                            
@@ -827,10 +827,10 @@ module mpas_core
                ! Check that bottomDepth and maxLevelCell match.  Some older grids do not have the bottomDepth variable.
                if (bottomDepth(iCell) > refBottomDepth(maxLevelCell(iCell)).or. &
                    bottomDepth(iCell) < refBottomDepthTopOfCell(maxLevelCell(iCell))) then
-                  write (0,'(a)') ' fatal error: bottomDepth and maxLevelCell do not match:'
-                  write (0,'(a,2i5,10f10.2)') ' iCell, maxLevelCell(iCell), bottomDepth(iCell): ', &
+                  write (stderrUnit,'(a)') ' fatal error: bottomDepth and maxLevelCell do not match:'
+                  write (stderrUnit,'(a,2i5,10f10.2)') ' iCell, maxLevelCell(iCell), bottomDepth(iCell): ', &
                                 iCell, maxLevelCell(iCell), bottomDepth(iCell)
-                  write (0,'(a,10f10.2)') ' refBottomDepth(maxLevelCell(iCell)), refBottomDepthTopOfCell(maxLevelCell(iCell)): ', &
+                  write (stderrUnit,'(a,10f10.2)') ' refBottomDepth(maxLevelCell(iCell)), refBottomDepthTopOfCell(maxLevelCell(iCell)): ', &
                                 refBottomDepth(maxLevelCell(iCell)), refBottomDepthTopOfCell(maxLevelCell(iCell))
                   call mpas_dmpar_abort(dminfo)
                endif

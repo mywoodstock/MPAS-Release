@@ -16,7 +16,7 @@ module mpas_io
    use pionfatt_mod
    use pio_types
 
-   integer :: pio_iotype
+   integer, private :: pio_iotype
    
    ! File access modes
    integer, parameter :: MPAS_IO_READ  = 1, &
@@ -232,6 +232,7 @@ module mpas_io
       integer, intent(in) :: io_type_in
 
       pio_iotype = io_type_in
+
    end subroutine MPAS_io_set_iotype
    
    type (MPAS_IO_Handle_type) function MPAS_io_open(filename, mode, ioformat, ierr)

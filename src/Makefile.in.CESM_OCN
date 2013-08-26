@@ -32,5 +32,5 @@ mpas: reg_includes externals frame ops dycore drver
 externals: 
 
 drver:  reg_includes externals frame ops dycore
-	( cd $(DRIVER); $(MAKE) CPPFLAGS="$(CPPFLAGS)" CPPINCLUDES="$(CPPINCLUDES)" all ) 
+	( cd $(DRIVER); $(MAKE) CPPFLAGS="$(CPPFLAGS)" CPPINCLUDES="$(CPPINCLUDES)" FREEFLAGS="$(FREEFLAGS)" all ) 
 
