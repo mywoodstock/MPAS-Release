@@ -116,6 +116,24 @@ gfortran:
 	"OPENMP_FLAG = -fopenmp" \
 	"CPPFLAGS = $(MODEL_FORMULATION) -D_MPI -DUNDERSCORE" )
 
+gfortran-prof:
+	( $(MAKE) all \
+	"FC_PARALLEL = mpif90" \
+	"CC_PARALLEL = mpicc" \
+	"FC_SERIAL = gfortran" \
+	"CC_SERIAL = gcc" \
+	"FFLAGS_OPT = -pg -g -O3 -m64 -ffree-line-length-none -fdefault-real-8 -fconvert=big-endian -ffree-form" \
+	"CFLAGS_OPT = -pg -g -O3 -m64" \
+	"LDFLAGS_OPT = -pg -g -O3 -m64" \
+	"FFLAGS_DEBUG = -pg -g -m64 -ffree-line-length-none -fdefault-real-8 -fconvert=big-endian -ffree-form -fbounds-check -fbacktrace -ffpe-trap=invalid,zero,overflow" \
+	"CFLAGS_DEBUG = -pg -g -m64" \
+	"LDFLAGS_DEBUG = -pg -g -m64" \
+	"CORE = $(CORE)" \
+	"DEBUG = $(DEBUG)" \
+	"USE_PAPI = $(USE_PAPI)" \
+	"OPENMP_FLAG = -fopenmp" \
+	"CPPFLAGS = $(MODEL_FORMULATION) -D_MPI -DUNDERSCORE" )
+
 g95:
 	( $(MAKE) all \
 	"FC_PARALLEL = mpif90" \
