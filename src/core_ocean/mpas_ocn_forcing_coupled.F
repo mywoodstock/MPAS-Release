@@ -170,22 +170,14 @@ contains
       end do
 
 
+      ! Build surface fluxes at cell centers
       do iCell = 1, grid % nCells
-!       surfaceTracerFlux(index_temperature_flux, iCell) = (latentHeatFlux(iCell) + evaporationFlux(iCell) * latent_heat_vapor_mks + sensibleHeatFlux(iCell) + longWaveHeatFluxUp(iCell) + longWaveHeatFluxDown(iCell) &
-!                                                          + seaIceHeatFlux(iCell) - (snowFlux(iCell) + iceRunoffFlux(iCell)) * latent_heat_fusion_mks) * hflux_factor
-
         surfaceTracerFlux(index_temperature_flux, iCell) = (latentHeatFlux(iCell) + sensibleHeatFlux(iCell) + longWaveHeatFluxUp(iCell) + longWaveHeatFluxDown(iCell) &
                                                            + seaIceHeatFlux(iCell) - (snowFlux(iCell) + iceRunoffFlux(iCell)) * latent_heat_fusion_mks) * hflux_factor
 
-!       if(config_use_virtual_salinity_flux) then
-!          surfaceTracerFlux(index_salinity_flux, iCell) = (rainFlux(iCell) + snowFlux(iCell) + evaporationFlux(iCell) + seaIceFreshWaterFlux(iCell) + riverRunoffFlux(iCell) + iceRunOffFlux(iCell)) * salinity_factor &
-!                                                          + seaIceSalinityFlux(iCell) * sflux_factor
-!          surfaceMassFlux(iCell) = 0.0_RKIND
-!       else
-           surfaceTracerFlux(index_salinity_flux, iCell) = seaIceSalinityFlux(iCell) * sflux_factor
+        surfaceTracerFlux(index_salinity_flux, iCell) = seaIceSalinityFlux(iCell) * sflux_factor
 
-           surfaceMassFlux(iCell) = snowFlux(iCell) + rainFlux(iCell) + evaporationFlux(iCell) + seaIceFreshWaterFlux(iCell) + iceRunoffFlux(iCell) + riverRunoffFlux(iCell)
-!       end if
+        surfaceMassFlux(iCell) = snowFlux(iCell) + rainFlux(iCell) + evaporationFlux(iCell) + seaIceFreshWaterFlux(iCell) + iceRunoffFlux(iCell) + riverRunoffFlux(iCell)
       end do
 
 #endif
