@@ -23,7 +23,7 @@ module mpas_units
 
    integer, save :: stdoutUnit, stderrUnit
    integer, parameter, private :: maxUnits = 99
-   logical, dimension(maxUnits), private, save :: unitsInUse
+   logical, dimension(0:maxUnits), private, save :: unitsInUse
 
    contains
 

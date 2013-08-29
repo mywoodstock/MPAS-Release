@@ -133,9 +133,9 @@ module mpas_timekeeping
       else if (trim(calendar) == 'gregorian_noleap') then
          TheCalendar = MPAS_GREGORIAN_NOLEAP
          call ESMF_Initialize(defaultCalendar=ESMF_CAL_NOLEAP)
-!     else if (trim(calendar) == '360day') then
-!        TheCalendar = MPAS_360DAY
-!        call ESMF_Initialize(defaultCalendar=ESMF_CAL_360DAY)
+      else if (trim(calendar) == '360day') then
+         TheCalendar = MPAS_360DAY
+         call ESMF_Initialize(defaultCalendar=ESMF_CAL_360DAY)
       else
          write(stderrUnit,*) 'ERROR: mpas_timekeeping_init: Invalid calendar type'
       end if
