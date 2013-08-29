@@ -352,6 +352,10 @@
                     description="Coefficient used to determine transmission of surface fluxes. Fluxes are defined with $e^{z/\gamma}$ where this coefficient is $\gamma$."
                     possible_values="Any real number $0.0 < \gamma <= 1.0$"
         />
+		<nml_option name="config_frazil_ice_formation" type="logical" default_value=".true." units="unitless"
+					description="Logical flag that determines if the formation of frazil ice is allowed."
+					possible_values=".true. or .false."
+	    />
 	</nml_record>
 	<nml_record name="advection">
 		<nml_option name="config_vert_tracer_adv" type="character" default_value="stencil" units="unitless"
@@ -1048,8 +1052,14 @@
                  description="Flux of salinity through the ocean surface"
             />
         </var_array>
+		<var name="iceColumnCooling" type="real" dimensions="nCells Time" units="$^\circ C m$"
+		     description="Total column cooling from frazil ice formation."
+		/>
 		<var name="seaSurfacePressure" type="real" dimensions="nCells Time" streams="r" units="Pa"
 		     description="Pressure defined at the sea surface."
+		/>
+		<var name="seaIceEnergy" type="real" dimensions="nCells Time" streams="o" units="J m^{-2}"
+			 description="Energy per unit area trapped in frazil ice formation. Always >= 0.0."
 		/>
 #ifdef MPAS_CESM
         <!-- Input fields for coupling -->
