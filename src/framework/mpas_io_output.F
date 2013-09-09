@@ -56,7 +56,7 @@ module mpas_io_output
       else if (trim(stream) == 'RESTART') then
          if(present(outputSuffix)) then
             call mpas_insert_string_suffix(config_restart_name, outputSuffix, tempfilename)
-            open(22,file='restart_timestamp',form='formatted',status='replace')
+            open(22,file=config_restart_timestamp_filename,form='formatted',status='replace')
             write(22,*) outputSuffix
             close(22)
          else
