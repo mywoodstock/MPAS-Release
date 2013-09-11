@@ -148,8 +148,14 @@ contains
       tracers => s % tracers % array
 
       call mpas_timer_start("eos rich", .false., richEOSTimer)
-      call ocn_equation_of_state_density(s, grid, 0,'relative', err)
-      call ocn_equation_of_state_density(s, grid, 1,'relative', err)
+
+         ! compute in-place density
+         call ocn_equation_of_state_density(s, grid, 0, 'relative', density, err)
+
+         ! compute displacedDensity, density displaced adiabatically to the mid-depth one layer deeper.  
+         ! That is, layer k has been displaced to the depth of layer k+1.
+         call ocn_equation_of_state_density(s, grid, 1, 'relative', displacedDensity, err)
+
       call mpas_timer_stop("eos rich", richEOSTimer)
 
       call ocn_vmix_get_rich_numbers(grid, indexT, indexS, normalVelocity, layerThickness, layerThicknessEdge, & 
@@ -451,6 +457,7 @@ contains
       du2TopOfCell => scratch % du2TopOfCell % array
       du2TopOfEdge => scratch % du2TopOfEdge % array
 
+      ! ddensityTopOfCell(k) = $\rho^*_{k-1}-\rho_k$, where $\rho^*$ has been adiabatically displaced to level k.
       ! ddensityTopOfCell(k) = $\density^*_{k-1}-\density^*_k$
       !$OMP WORKSHARE
       ddensityTopOfCell = 0.0
@@ -459,7 +466,7 @@ contains
       !$OMP DO SCHEDULE(RUNTIME) PRIVATE(k)
       do iCell=1,nCells
          do k=2,maxLevelCell(iCell)
-            ddensityTopOfCell(k,iCell) = displacedDensity(k-1,iCell) - displacedDensity(k,iCell)
+            ddensityTopOfCell(k,iCell) = displacedDensity(k-1,iCell) - density(k,iCell)
           end do
       end do
       !$OMP END DO
