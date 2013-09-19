@@ -113,14 +113,22 @@ module ocn_time_integration_rk4
         block_d = block
         !$OMP TASK FIRSTPRIVATE(block_d)
         block_d % state % time_levs(2) % state % normalVelocity % array(:,:) = block_d % state % time_levs(1) % state % normalVelocity % array(:,:)
+        !$OMP END TASK
+
+        !$OMP TASK FIRSTPRIVATE(block_d)
         block_d % state % time_levs(2) % state % layerThickness % array(:,:) = block_d % state % time_levs(1) % state % layerThickness % array(:,:)
+        !$OMP END TASK
+
+        !$OMP TASK FIRSTPRIVATE(block_d)
         do iCell=1,block_d % mesh % nCells  ! couple tracers to h
           do k=1,block_d % mesh % maxLevelCell % array(iCell)
             block_d % state % time_levs(2) % state % tracers % array(:,k,iCell) = block_d % state % time_levs(1) % state % tracers % array(:,k,iCell) &
                                                                       * block_d % state % time_levs(1) % state % layerThickness % array(k,iCell)
            end do
         end do
+        !$OMP END TASK
 
+        !$OMP TASK FIRSTPRIVATE(block_d)
         call mpas_copy_state(block_d % provis_state, block_d % state % time_levs(1) % state)
         !$OMP END TASK
 
@@ -161,22 +169,36 @@ module ocn_time_integration_rk4
         do while (associated(block))
 
            block_d = block
-           !$OMP TASK FIRSTPRIVATE(block_d)
+
            ! advection of u uses u, while advection of layerThickness and tracers use uTransport.
+           !$OMP TASK FIRSTPRIVATE(block_d)
            call ocn_vert_transport_velocity_top(block_d % mesh, block_d % provis_state % layerThickness % array, block_d % provis_state % layerThicknessEdge % array, &
               block_d % provis_state % normalVelocity % array, block_d % provis_state % vertTransportVelocityTop % array, err)
-           call ocn_tend_vel(block_d % tend, block_d % provis_state, block_d % diagnostics, block_d % mesh)
+           !$OMP END TASK
 
+           !$OMP TASK FIRSTPRIVATE(block_d)
+           call ocn_tend_vel(block_d % tend, block_d % provis_state, block_d % diagnostics, block_d % mesh)
+           !$OMP END TASK
+
+           !$OMP TASK FIRSTPRIVATE(block_d)
            call ocn_vert_transport_velocity_top(block_d % mesh, block_d % provis_state % layerThickness % array, block_d % provis_state % layerThicknessEdge % array, &
               block_d % provis_state % uTransport % array, block_d % provis_state % vertTransportVelocityTop % array, err)
-           call ocn_tend_thick(block_d % tend, block_d % provis_state, block_d % mesh)
+           !$OMP END TASK
 
+           !$OMP TASK FIRSTPRIVATE(block_d)
+           call ocn_tend_thick(block_d % tend, block_d % provis_state, block_d % mesh)
+           !$OMP END TASK
+
+           !$OMP TASK FIRSTPRIVATE(block_d)
            if (config_filter_btr_mode) then
                call ocn_filter_btr_mode_tend_vel(block_d % tend, block_d % provis_state, block_d % mesh)
            endif
+           !$OMP END TASK
 
+           !$OMP TASK FIRSTPRIVATE(block_d)
            call ocn_tend_tracer(block_d % tend, block_d % provis_state, block_d % diagnostics, block_d % mesh, dt)
            !$OMP END TASK
+
            block => block % next
         end do
         !$OMP TASKWAIT
@@ -200,9 +222,14 @@ module ocn_time_integration_rk4
               !$OMP TASK FIRSTPRIVATE(block_d)
               block_d % provis_state % normalVelocity % array(:,:) = block_d % state % time_levs(1) % state % normalVelocity % array(:,:)  &
                                                     + rk_substep_weights(rk_step) * block_d % tend % normalVelocity % array(:,:)
+              !$OMP END TASK
 
+              !$OMP TASK FIRSTPRIVATE(block_d)
               block_d % provis_state % layerThickness % array(:,:) = block_d % state % time_levs(1) % state % layerThickness % array(:,:)  &
                                               + rk_substep_weights(rk_step) * block_d % tend % layerThickness % array(:,:)
+              !$OMP END TASK
+
+              !$OMP TASK FIRSTPRIVATE(block_d)
               do iCell=1,block_d % mesh % nCells
                  do k=1,block_d % mesh % maxLevelCell % array(iCell)
                  block_d % provis_state % tracers % array(:,k,iCell) = ( block_d % state % time_levs(1) % state % layerThickness % array(k,iCell) * &
@@ -212,17 +239,26 @@ module ocn_time_integration_rk4
                  end do
 
               end do
+              !$OMP END TASK
+
+              !$OMP TASK FIRSTPRIVATE(block_d)
               if (config_prescribe_velocity) then
                  block_d % provis_state % normalVelocity % array(:,:) = block_d % state % time_levs(1) % state % normalVelocity % array(:,:)
               end if
+              !$OMP END TASK
 
+              !$OMP TASK FIRSTPRIVATE(block_d)
               if (config_prescribe_thickness) then
                  block_d % provis_state % layerThickness % array(:,:) = block_d % state % time_levs(1) % state % layerThickness % array(:,:)
               end if
+              !$OMP END TASK
 
+              !$OMP TASK FIRSTPRIVATE(block_d)
               call ocn_diagnostic_solve(dt, block_d % provis_state, block_d % mesh, block_d % scratch)
+              !$OMP END TASK
 
               ! Compute velocity transport, used in advection terms of layerThickness and tracer tendency
+              !$OMP TASK FIRSTPRIVATE(block_d)
               block_d % provis_state % uTransport % array(:,:) &
                     = block_d % provis_state % normalVelocity % array(:,:) &
                     + block_d % provis_state % uBolusGM   % array(:,:)
@@ -243,10 +279,14 @@ module ocn_time_integration_rk4
            !$OMP TASK FIRSTPRIVATE(block_d)
            block_d % state % time_levs(2) % state % normalVelocity % array(:,:) = block_d % state % time_levs(2) % state % normalVelocity % array(:,:) &
                                    + rk_weights(rk_step) * block_d % tend % normalVelocity % array(:,:) 
+           !$OMP END TASK
 
+           !$OMP TASK FIRSTPRIVATE(block_d)
            block_d % state % time_levs(2) % state % layerThickness % array(:,:) = block_d % state % time_levs(2) % state % layerThickness % array(:,:) &
                                    + rk_weights(rk_step) * block_d % tend % layerThickness % array(:,:) 
+           !$OMP END TASK
 
+           !$OMP TASK FIRSTPRIVATE(block_d)
            do iCell=1,block_d % mesh % nCells
               do k=1,block_d % mesh % maxLevelCell % array(iCell)
                  block_d % state % time_levs(2) % state % tracers % array(:,k,iCell) =  &
@@ -301,7 +341,9 @@ module ocn_time_integration_rk4
         ! implicit vmix routine that follows. 
         !$OMP TASK FIRSTPRIVATE(block_d)
         call ocn_diagnostic_solve(dt, block_d % state % time_levs(2) % state, block_d % mesh, block % scratch)
+        !$OMP END TASK
 
+        !$OMP TASK FIRSTPRIVATE(block_d)
         call ocn_vmix_implicit(dt, block_d % mesh, block_d % diagnostics, block_d % state % time_levs(2) % state, err)
         !$OMP END TASK
         block => block % next
@@ -326,18 +368,26 @@ module ocn_time_integration_rk4
          if (config_prescribe_velocity) then
             block % state % time_levs(2) % state % normalVelocity % array(:,:) = block % state % time_levs(1) % state % normalVelocity % array(:,:)
          end if
+         !$OMP END TASK
 
+         !$OMP TASK FIRSTPRIVATE(block_d)
          if (config_prescribe_thickness) then
             block % state % time_levs(2) % state % layerThickness % array(:,:) = block % state % time_levs(1) % state % layerThickness % array(:,:)
          end if
+         !$OMP END TASK
 
+         !$OMP TASK FIRSTPRIVATE(block_d)
          call ocn_diagnostic_solve(dt, block % state % time_levs(2) % state, block % mesh, block % scratch)
+         !$OMP END TASK
 
          ! Compute velocity transport, used in advection terms of layerThickness and tracer tendency
+         !$OMP TASK FIRSTPRIVATE(block_d)
             block % state % time_levs(2) % state % uTransport % array(:,:) &
           = block % state % time_levs(2) % state % normalVelocity % array(:,:) &
           + block % state % time_levs(2) % state % uBolusGM % array(:,:)
+         !$OMP END TASK
 
+         !$OMP TASK FIRSTPRIVATE(block_d)
          call mpas_reconstruct(block % mesh, block % state % time_levs(2) % state % normalVelocity % array,          &
                           block % state % time_levs(2) % state % normalVelocityX % array,            &
                           block % state % time_levs(2) % state % normalVelocityY % array,            &
@@ -345,7 +395,9 @@ module ocn_time_integration_rk4
                           block % state % time_levs(2) % state % normalVelocityZonal % array,        &
                           block % state % time_levs(2) % state % normalVelocityMeridional % array    &
                          )
+         !$OMP END TASK
 
+         !$OMP TASK FIRSTPRIVATE(block_d)
          call ocn_time_average_accumulate(block % state % time_levs(2) % state, block % state % time_levs(1) % state)
          !$OMP END TASK
 
