@@ -174,7 +174,7 @@ module mpas_ocn_tracer_advection_mono
           inv_h_new(k, iCell) = 1.0 / (layerThickness(k, iCell) + dt * tend_layerThickness(k, iCell))
         end do
       end do
-      !$OMP END DO
+      !$OMP END DO NOWAIT
 
       call mpas_timer_stop('adv_setup')
 
@@ -195,7 +195,7 @@ module mpas_ocn_tracer_advection_mono
             end if
           end do ! k loop
         end do ! iCell loop
-        !$OMP END DO
+        !$OMP END DO NOWAIT
 
         !$OMP WORKSHARE
         high_order_vert_flux = 0.0
@@ -242,7 +242,7 @@ module mpas_ocn_tracer_advection_mono
             end do ! k loop
           end do ! i loop over nEdgesOnCell
         end do ! iCell Loop
-        !$OMP END DO
+        !$OMP END DO NOWAIT
 
         call mpas_timer_stop('high_ord_vert_flux')
         call mpas_timer_start('high_ord_hori_flux', .false.)
@@ -265,7 +265,7 @@ module mpas_ocn_tracer_advection_mono
             end do ! k loop
           end do ! i loop over nAdvCellsForEdge
         end do ! iEdge loop
-        !$OMP END DO
+        !$OMP END DO NOWAIT
 
         call mpas_timer_stop('high_ord_hori_flux')
         call mpas_timer_start('low_ord_vert_flux', .false.)
@@ -299,7 +299,7 @@ module mpas_ocn_tracer_advection_mono
             flux_outgoing(k, iCell) = min(0.0_RKIND, high_order_vert_flux(k+1, iCell)) - max(0.0_RKIND, high_order_vert_flux(k, iCell))
           end do ! k Loop
         end do ! iCell Loop
-        !$OMP END DO
+        !$OMP END DO NOWAIT
 
         call mpas_timer_stop('low_ord_vert_flux')
         call mpas_timer_start('low_ord_hori_flux', .false.)
@@ -322,7 +322,7 @@ module mpas_ocn_tracer_advection_mono
             high_order_horiz_flux(k,iEdge) = high_order_horiz_flux(k,iEdge) - flux_upwind
           end do ! k loop
         end do ! iEdge loop
-        !$OMP END DO
+        !$OMP END DO NOWAIT
 
         !$OMP DO SCHEDULE(RUNTIME) PRIVATE(invAreaCell1, i, iEdge, cell1, cell2, k, flux_upwind)
         do iCell = 1, nCells
@@ -344,7 +344,7 @@ module mpas_ocn_tracer_advection_mono
             end do
           end do
         end do
-        !$OMP END DO
+        !$OMP END DO NOWAIT
 
         call mpas_timer_stop('low_ord_hori_flux')
         call mpas_timer_start('fct_factors', .false.)
@@ -367,7 +367,7 @@ module mpas_ocn_tracer_advection_mono
             flux_outgoing(k,iCell) = min( 1.0_RKIND, max( 0.0_RKIND, scale_factor) )
           end do ! k loop
         end do ! iCell loop
-        !$OMP END DO
+        !$OMP END DO NOWAIT
 
         call mpas_timer_stop('fct_factors')
         call mpas_timer_start('rescale_hori', .false.)
@@ -385,7 +385,7 @@ module mpas_ocn_tracer_advection_mono
             high_order_horiz_flux(k,iEdge) = flux
           end do ! k loop
         end do ! iEdge loop
-        !$OMP END DO
+        !$OMP END DO NOWAIT
 
         call mpas_timer_stop('rescale_hori')
         call mpas_timer_start('rescale_vert', .false.)
@@ -404,7 +404,7 @@ module mpas_ocn_tracer_advection_mono
             high_order_vert_flux(k,iCell) = flux
           end do ! k loop
         end do ! iCell loop
-        !$OMP END DO
+        !$OMP END DO NOWAIT
 
         call mpas_timer_stop('rescale_vert')
         call mpas_timer_start('accumulate_hori', .false.)
@@ -425,7 +425,7 @@ module mpas_ocn_tracer_advection_mono
             end do
           end do
         end do
-        !$OMP END DO
+        !$OMP END DO NOWAIT
 
         call mpas_timer_stop('accumulate_hori')
         call mpas_timer_start('accumulate_vert', .false.)
@@ -446,7 +446,7 @@ module mpas_ocn_tracer_advection_mono
             end if
           end do ! k loop
         end do ! iCell loop
-        !$OMP END DO
+        !$OMP END DO NOWAIT
 
         call mpas_timer_stop('accumulate_vert')
 
@@ -464,7 +464,7 @@ module mpas_ocn_tracer_advection_mono
               end if
             end do
           end do
-          !$OMP END DO
+          !$OMP END DO NOWAIT
         end if
       end do ! iTracer loop
 
