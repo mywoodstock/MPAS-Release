@@ -171,6 +171,20 @@ intel-nersc:
 	"USE_PAPI = $(USE_PAPI)" \
 	"CPPFLAGS = $(MODEL_FORMULATION) -D_MPI -DUNDERSCORE" )
 
+intel-dumpi-nersc:
+	( $(MAKE) all \
+	"FC_PARALLEL = ftn" \
+	"CC_PARALLEL = cc" \
+	"FC_SERIAL = ftn" \
+	"CC_SERIAL = cc" \
+	"FFLAGS_OPT = -real-size 64 -O3 -FR" \
+	"CFLAGS_OPT = -O3" \
+	"LDFLAGS_OPT = -O3 -L$(DUMPI_PATH)/lib -ldumpi" \
+	"CORE = $(CORE)" \
+	"DEBUG = $(DEBUG)" \
+	"USE_PAPI = $(USE_PAPI)" \
+	"CPPFLAGS = $(MODEL_FORMULATION) -D_MPI -DUNDERSCORE" )
+
 bluegene:
 	( $(MAKE) all \
 	"FC_PARALLEL = mpixlf95_r" \
