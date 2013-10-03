@@ -180,7 +180,7 @@ intel-dumpi-nersc:
 	"CC_SERIAL = cc" \
 	"FFLAGS_OPT = -real-size 64 -O3 -FR" \
 	"CFLAGS_OPT = -O3" \
-	"LDFLAGS_OPT = -O3 -L$(DUMPI_PATH)/lib -ldumpi" \
+	"LDFLAGS_OPT = -O3 -L$(DUMPI_PATH)/lib -ldumpi -ldumpif90" \
 	"CORE = $(CORE)" \
 	"DEBUG = $(DEBUG)" \
 	"OPENMP_FLAG = -openmp" \
