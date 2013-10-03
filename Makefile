@@ -168,6 +168,7 @@ intel-nersc:
 	"LDFLAGS_OPT = -O3" \
 	"CORE = $(CORE)" \
 	"DEBUG = $(DEBUG)" \
+	"OPENMP_FLAG = -openmp" \
 	"USE_PAPI = $(USE_PAPI)" \
 	"CPPFLAGS = $(MODEL_FORMULATION) -D_MPI -DUNDERSCORE" )
 
@@ -182,6 +183,7 @@ intel-dumpi-nersc:
 	"LDFLAGS_OPT = -O3 -L$(DUMPI_PATH)/lib -ldumpi" \
 	"CORE = $(CORE)" \
 	"DEBUG = $(DEBUG)" \
+	"OPENMP_FLAG = -openmp" \
 	"USE_PAPI = $(USE_PAPI)" \
 	"CPPFLAGS = $(MODEL_FORMULATION) -D_MPI -DUNDERSCORE" )
 
