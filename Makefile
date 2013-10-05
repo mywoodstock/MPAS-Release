@@ -191,6 +191,21 @@ intel-nersc:
 	"USE_PAPI = $(USE_PAPI)" \
 	"CPPFLAGS = $(MODEL_FORMULATION) -D_MPI -DUNDERSCORE" )
 
+intel-nersc-tau:
+	( $(MAKE) all \
+	"FC_PARALLEL = tau_f90.sh" \
+	"CC_PARALLEL = tau_cc.sh" \
+	"FC_SERIAL = tau_f90.sh" \
+	"CC_SERIAL = tau_cc.sh" \
+	"FFLAGS_OPT = -real-size 64 -O3 -FR" \
+	"CFLAGS_OPT = -O3" \
+	"LDFLAGS_OPT = -O3" \
+	"CORE = $(CORE)" \
+	"DEBUG = $(DEBUG)" \
+	"OPENMP_FLAG = -openmp" \
+	"USE_PAPI = $(USE_PAPI)" \
+	"CPPFLAGS = $(MODEL_FORMULATION) -D_MPI -DUNDERSCORE" )
+
 bluegene:
 	( $(MAKE) all \
 	"FC_PARALLEL = mpixlf95_r" \
