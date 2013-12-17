@@ -998,7 +998,8 @@ module mpas_io
       integer (kind=PIO_OFFSET), dimension(:), pointer :: compdof
       type (decomplist_type), pointer :: decomp_cursor, new_decomp
 
-!      write(stderrUnit,*) 'Called MPAS_io_set_var_indices()'
+      !write(stderrUnit,*) 'Called MPAS_io_set_var_indices()'
+      !write(stderrUnit,*) indices(:)
       if (present(ierr)) ierr = MPAS_IO_NOERR
 
       ! Sanity checks
@@ -1007,7 +1008,7 @@ module mpas_io
          return 
       end if
 
-!      write(stderrUnit,*) 'Assigning ', size(indices), ' indices for ', trim(fieldname)
+      !write(stderrUnit,*) 'Assigning ', size(indices), ' indices for ', trim(fieldname)
       !  
       ! Check whether the field has been defined
       !
@@ -1139,6 +1140,7 @@ module mpas_io
 
       allocate(compdof(pd)) 
 
+      !write(*,*) ndims, dimlist(:)
       indx = 1
       if (ndims == 5) then
          do i5=1,dimlist(5)

@@ -60,6 +60,7 @@ module mpas_configure
          end if
 
 #include "config_namelist_reads.inc"
+         !write(stderrUnit,*) 'Done'
          close(funit)
          write(stderrUnit,*) ' '
       end if
