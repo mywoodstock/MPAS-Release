@@ -24,6 +24,8 @@ module mpas_tracer_advection_mono
 
    use mpas_tracer_advection_helpers
 
+   use mpas_timer
+
    implicit none
    private
    save 
@@ -86,6 +88,8 @@ module mpas_tracer_advection_mono
       real (kind=RKIND), dimension(:,:), pointer :: flux_incoming, flux_outgoing, high_order_horiz_flux, high_order_vert_flux
 
       real (kind=RKIND), parameter :: eps = 1.e-10_RKIND
+
+      call mpas_timer_start("amSetupLoops")
 
       ! Get dimensions
       nCells = grid % nCells
@@ -174,9 +178,16 @@ module mpas_tracer_advection_mono
         end do
       end do
 
+      !call mpas_timer_stop("amSetupLoops", amSetupTimer)
+      call mpas_timer_stop("amSetupLoops")
+      !call mpas_timer_start("amTracerLoop", .false., amTracerTimer)
+      call mpas_timer_start("amTracerLoop")
+
       ! Loop over tracers. One tracer is advected at a time. It is copied into a temporary array in order to improve locality
       do iTracer = 1, num_tracers
         ! Initialize variables for use in this iTracer iteration
+        !call mpas_timer_start("initLoop", .false., amInitTimer)
+        call mpas_timer_start("initLoop")
         do iCell = 1, nCells
           do k=1, maxLevelCell(iCell)
             tracer_cur(k,iCell) = tracers(iTracer,k,iCell)
@@ -188,11 +199,15 @@ module mpas_tracer_advection_mono
             end if
           end do ! k loop
         end do ! iCell loop
+        !call mpas_timer_stop("initLoop", amInitTimer)
+        call mpas_timer_stop("initLoop")
 
         high_order_vert_flux = 0.0_RKIND
         high_order_horiz_flux = 0.0_RKIND
 
         !  Compute the high order vertical flux. Also determine bounds on tracer_cur. 
+        !call mpas_timer_start("hvFluxLoop", .false., amhvFluxTimer)
+        call mpas_timer_start("hvFluxLoop")
         do iCell = 1, nCells
           k = 1
           tracer_max(k,iCell) = max(tracer_cur(k,iCell),tracer_cur(k+1,iCell))
@@ -236,20 +251,27 @@ module mpas_tracer_advection_mono
             end do ! k loop
           end do ! i loop over nEdgesOnCell
         end do ! iCell Loop
+        !call mpas_timer_stop("hvFluxLoop", amhvFluxTimer)
+        call mpas_timer_stop("hvFluxLoop")
 
         !  Compute the high order horizontal flux
+        !call mpas_timer_start("hhFluxLoop", .false., amhhFluxTimer)
+        call mpas_timer_start("hhFluxLoop")
         do iEdge = 1, nEdges
           cell1 = cellsOnEdge(1, iEdge)
           cell2 = cellsOnEdge(2, iEdge)
 
           ! Compute 2nd order fluxes where needed.
+          !call mpas_timer_start("hhFluxLoop1")
           do k = 1, maxLevelEdgeTop(iEdge)
             tracer_weight = iand(highOrderAdvectionMask(k, iEdge)+1, 1) * (dvEdge(iEdge) * 0.5_RKIND) * normalThicknessFlux(k, iEdge)
 
             high_order_horiz_flux(k, iEdge) = high_order_horiz_flux(k, iedge) + tracer_weight * (tracer_cur(k, cell1) + tracer_cur(k, cell2))
           end do ! k loop
+          !call mpas_timer_stop("hhFluxLoop1")
 
           ! Compute 3rd or 4th fluxes where requested.
+          !call mpas_timer_start("hhFluxLoop2")
           do i = 1, nAdvCellsForEdge(iEdge)
             iCell = advCellsForEdge(i,iEdge)
             do k = 1, maxLevelCell(iCell)
@@ -259,12 +281,17 @@ module mpas_tracer_advection_mono
               high_order_horiz_flux(k,iEdge) = high_order_horiz_flux(k,iEdge) + tracer_weight * tracer_cur(k,iCell)
             end do ! k loop
           end do ! i loop over nAdvCellsForEdge
+          !call mpas_timer_stop("hhFluxLoop2")
         end do ! iEdge loop
+        !call mpas_timer_stop("hhFluxLoop", amhhFluxTimer)
+        call mpas_timer_stop("hhFluxLoop")
 
         !  low order upwind vertical flux (monotonic and diffused)
         !  Remove low order flux from the high order flux.
         !  Store left over high order flux in high_order_vert_flux array.
         !  Upwind fluxes are accumulated in upwind_tendency
+        !call mpas_timer_start("lvFluxLoop", .false., amlvFluxTimer)
+        call mpas_timer_start("lvFluxLoop")
         do iCell = 1, nCells
           do k = 2, maxLevelCell(iCell)
             ! dwj 02/03/12 and Atmosphere are different in vertical
@@ -293,11 +320,15 @@ module mpas_tracer_advection_mono
             end if
           end do ! k Loop
         end do ! iCell Loop
+        !call mpas_timer_stop("lvFluxLoop", amlvFluxTimer)
+        call mpas_timer_stop("lvFluxLoop")
 
         !  low order upwind horizontal flux (monotinc and diffused)
         !  Remove low order flux from the high order flux
         !  Store left over high order flux in high_order_horiz_flux array
         !  Upwind fluxes are accumulated in upwind_tendency
+        !call mpas_timer_start("lhFluxLoop", .false., amlhFluxTimer)
+        call mpas_timer_start("lhFluxLoop")
         do iEdge = 1, nEdges
           cell1 = cellsOnEdge(1,iEdge)
           cell2 = cellsOnEdge(2,iEdge)
@@ -328,10 +359,14 @@ module mpas_tracer_advection_mono
             end do
           end do
         end do
+        !call mpas_timer_stop("lhFluxLoop", amlhFluxTimer)
+        call mpas_timer_stop("lhFluxLoop")
 
         ! Build the factors for the FCT
         ! Computed using the bounds that were computed previously, and the bounds on the newly updated value
         ! Factors are placed in the flux_incoming and flux_outgoing arrays
+        !call mpas_timer_start("fctBuildLoop", .false., amfctBuildTimer)
+        call mpas_timer_start("fctBuildLoop")
         do iCell = 1, nCells
           do k = 1, maxLevelCell(iCell)
             tracer_min_new = (tracer_cur(k,iCell)*layerThickness(k,iCell) + dt*(upwind_tendency(k,iCell)+flux_outgoing(k,iCell))) * inv_h_new(k,iCell)
@@ -345,8 +380,12 @@ module mpas_tracer_advection_mono
             flux_outgoing(k,iCell) = min( 1.0_RKIND, max( 0.0_RKIND, scale_factor) )
           end do ! k loop
         end do ! iCell loop
+        !call mpas_timer_stop("fctBuildLoop", amfctBuildTimer)
+        call mpas_timer_stop("fctBuildLoop")
 
         !  rescale the high order horizontal fluxes
+        !call mpas_timer_start("reshhFluxLoop", .false., amreshhFluxTimer)
+        call mpas_timer_start("reshhFluxLoop")
         do iEdge = 1, nEdges
           cell1 = cellsOnEdge(1,iEdge)
           cell2 = cellsOnEdge(2,iEdge)
@@ -357,8 +396,12 @@ module mpas_tracer_advection_mono
             high_order_horiz_flux(k,iEdge) = flux
           end do ! k loop
         end do ! iEdge loop
+        !call mpas_timer_stop("reshhFluxLoop",  amreshhFluxTimer)
+        call mpas_timer_stop("reshhFluxLoop")
 
         ! rescale the high order vertical flux
+        !call mpas_timer_start("reshvFluxLoop", .false., amreshvFluxTimer)
+        call mpas_timer_start("reshvFluxLoop")
         do iCell = 1, nCellsSolve
           do k = 2, maxLevelCell(iCell)
             flux =  high_order_vert_flux(k,iCell)
@@ -373,8 +416,12 @@ module mpas_tracer_advection_mono
             high_order_vert_flux(k,iCell) = flux
           end do ! k loop
         end do ! iCell loop
+        !call mpas_timer_stop("reshvFluxLoop", amreshvFluxTimer)
+        call mpas_timer_stop("reshvFluxLoop")
 
         ! Accumulate the scaled high order horizontal tendencies
+        !call mpas_timer_start("acchhTendLoop", .false., amacchhTendTimer)
+        call mpas_timer_start("acchhTendLoop")
         do iCell = 1, nCells
           invAreaCell1 = 1.0 / areaCell(iCell)
           do i = 1, nEdgesOnCell(iCell)
@@ -388,8 +435,12 @@ module mpas_tracer_advection_mono
             end do
           end do
         end do
+        !call mpas_timer_stop("acchhTendLoop", amacchhTendTimer)
+        call mpas_timer_stop("acchhTendLoop")
 
         ! Accumulate the scaled high order vertical tendencies, and the upwind tendencies
+        !call mpas_timer_start("acchvTendLoop", .false., amacchvTendTimer)
+        call mpas_timer_start("acchvTendLoop")
         do iCell = 1, nCellsSolve
           do k = 1,maxLevelCell(iCell)
             tend(iTracer, k, iCell) = tend(iTracer, k, iCell) + verticalDivergenceFactor(k) * (high_order_vert_flux(k+1, iCell) - high_order_vert_flux(k, iCell)) + upwind_tendency(k,iCell)
@@ -403,6 +454,8 @@ module mpas_tracer_advection_mono
             end if
           end do ! k loop
         end do ! iCell loop
+        !call mpas_timer_stop("acchvTendLoop", amacchvTendTimer)
+        call mpas_timer_stop("acchvTendLoop")
 
         if (monotonicityCheck) then
           !build min and max bounds on old and new tracer for check on monotonicity.
@@ -419,6 +472,9 @@ module mpas_tracer_advection_mono
           end do
         end if
       end do ! iTracer loop
+
+      !call mpas_timer_stop("amTracerLoop", amTracerTimer)
+      call mpas_timer_stop("amTracerLoop")
 
       deallocate(tracer_new)
       deallocate(tracer_cur)

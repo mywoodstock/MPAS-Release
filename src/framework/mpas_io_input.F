@@ -175,6 +175,9 @@ module mpas_io_input
 
       call mpas_io_setup_vertex_block_fields(inputHandle, nReadVertices, readVertexStart, readingBlock, vertexDegree, indexToVertexIDField, &
                                              xVertexField, yVertexField, zVertexField, cellsOnVertexField)
+
+      !write(*, *) indexToCellIDField % array(:)
+
       !
       ! Set up a graph derived data type describing the connectivity for the cells 
       !   that were read by this process
@@ -206,6 +209,8 @@ module mpas_io_input
       deallocate(partial_global_graph_info % nAdjacent)
       deallocate(partial_global_graph_info % adjacencyList)
 
+      !write(*, *) local_cell_list(:)
+
       call mpas_block_creator_setup_blocks_and_0halo_cells(domain, indexToCellID_Block, local_cell_list, block_id, block_start, block_count)
       call mpas_block_creator_build_0halo_cell_fields(indexToCellIDField, nEdgesOnCellField, cellsOnCellField, verticesOnCellField, edgesOnCellField, indexToCellID_Block, nEdgesOnCell_Block, cellsOnCell_Block, verticesOnCell_Block, edgesOnCell_Block)
 
@@ -217,6 +222,8 @@ module mpas_io_input
       call mpas_block_creator_build_edge_halos(indexToCellID_Block, nEdgesOnCell_Block, nCellsSolveField, edgesOnCell_Block, indexToEdgeID_Block, cellsOnEdge_Block, nEdgesSolveField)
       call mpas_block_creator_build_edge_halos(indexToCellID_Block, nEdgesOnCell_Block, nCellsSolveField, verticesOnCell_Block, indexToVertexID_Block, cellsOnVertex_Block, nVerticesSolveField)
 
+      !write(*, *) 'indexToCellID_Block:'
+      !write(*, *) indexToCellID_Block % array(:)
 
      ! Allocate blocks, and copy indexTo arrays into blocks
      call mpas_block_creator_finalize_block_init(domain % blocklist, &
@@ -324,7 +331,13 @@ module mpas_io_input
       !
       call mpas_exch_input_field_halos(domain, input_obj)
 
+      !write(*, *) 'BEFORE REINDEXING:'
+      !write(*, *) domain % blocklist % mesh % indexToCellID % array(:)
+
       call mpas_block_creator_reindex_block_fields(domain % blocklist)
+
+      !write(*, *) 'AFTER REINDEXING:'
+      !write(*, *) domain % blocklist % mesh % indexToCellID % array(:)
 
       call mpas_dmpar_destroy_mulithalo_exchange_list(indexToCellIDField % sendList)
       call mpas_dmpar_destroy_mulithalo_exchange_list(indexToCellIDField % recvList)
