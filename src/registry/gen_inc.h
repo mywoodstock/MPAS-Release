@@ -1,4 +1,4 @@
-// Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+// Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 // and the University Corporation for Atmospheric Research (UCAR).
 //
 // Unless noted otherwise source code is licensed under the BSD license.
@@ -10,3 +10,4 @@ void gen_history_attributes(char * modelname, char * corename, char * version);
 void gen_field_defs(struct group_list * groups, struct variable *, struct dimension *);
 void gen_reads(struct group_list * groups, struct variable *, struct dimension *);
 void gen_writes(struct group_list * groups, struct variable *, struct dimension *, struct namelist *);
+void gen_packages(struct package * pkgs);

@@ -1,11 +1,11 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
 ! Additional copyright and license information can be found in the LICENSE file
 ! distributed with this code, or at http://mpas-dev.github.com/license.html
 !
-!=============================================================================================
+!==================================================================================================
  module mpas_atmphys_manager
  use mpas_configure
  use mpas_kind_types
@@ -14,18 +14,13 @@
 
  use mpas_atmphys_constants
  use mpas_atmphys_vars
+ use mpas_atmphys_o3climatology
  use mpas_atmphys_update_surface
  use mpas_atmphys_utilities
 
  implicit none
  private
  public:: physics_timetracker,physics_run_init
-
-!add-ons and modifications to sourcecode:
-!* added initialization of variable sf_surface_physics in subroutine physics_run_init. see
-!  definition of sf_surface_physics in mpas_atmphys_vars.F
-!  Laura D. Fowler (birch.ucar.edu) / 2013-03-11.
- 
 
  integer, public:: year                 !Current year.
  integer, public:: julday               !Initial Julian day.
@@ -74,11 +69,38 @@
  integer :: h, m, s, s_n, s_d, DoY, yr
  real(kind=RKIND) :: utc_h
 
+
+!>\brief main time manager for physics parameterizations.
+!>\author Laura D. Fowler (send comments to laura@ucar.edu).
+!>\date 2013-05-01.
+!>
+!>\details
+!>
+!> subroutines in mpas_atmphys_manager:
+!> ------------------------------------
+!> physics_timetracker: check alarms and update boundary conditions if needed.
+!> physics_run_init   : create and initialize alarms used for physics parameterizations.
+!>
+!> add-ons and modifications to sourcecode:
+!> ----------------------------------------
+!>    * added initialization of variable sf_surface_physics in subroutine physics_run_init. see
+!>      definition of sf_surface_physics in mpas_atmphys_vars.F
+!>      Laura D. Fowler (birch.mmm.ucar.edu) / 2013-03-11.
+!>    * removed the namelist option config_conv_shallow_scheme and associated sourcecode.
+!>      Laura D. Fowler (birch.mmm.ucar.edu) / 2013-05-29.
+!>    * added call to subroutine o3climatology_from_MPAS to interpolate the climatological ozone
+!>      mixing ratios to the current julian day.
+!>      Laura D. Fowler (birch.mmm.ucar.edu) / 2013-07-03.
+!>    * added domain%dminfo in call to subroutine physics_update_sst to print local and global
+!>      min and max values of the updated sea-surface temperatures and sea-ice fractions.
+!>      Laura D. Fowler (birch.mmm.ucar.edu) / 2013-07-24.
+
+
  contains
 
-!=============================================================================================
+!==================================================================================================
  subroutine physics_timetracker(domain,dt,clock,itimestep,xtime_s)
-!=============================================================================================
+!==================================================================================================
 
 !input arguments:
  integer,intent(in):: itimestep
@@ -100,7 +122,7 @@
  real(kind=RKIND):: utc_s
  real(kind=RKIND):: xtime_m
 
-!=============================================================================================
+!==================================================================================================
  write(0,*)
  write(0,*) '--- enter subroutine physics_timetracker: itimestep = ', itimestep
 
@@ -141,7 +163,7 @@
     if(mpas_is_alarm_ringing(clock,sfcbdyAlarmID,ierr=ierr)) then
        call mpas_reset_clock_alarm(clock,sfcbdyAlarmID,ierr=ierr)
        if(config_sst_update) &
-          call physics_update_sst(block%mesh,block%sfc_input,block%diag_physics)
+          call physics_update_sst(domain%dminfo,block%mesh,block%sfc_input,block%diag_physics)
     endif   
 
     !apply a diurnal cycle to the sea-surface temperature:
@@ -200,6 +222,21 @@
     write(0,*) '--- time to run the convection scheme L_CONV    =',l_conv
  endif
 
+!check to see if it is time to update ozone to the current julian day in the RRTMG radiation codes:
+ if(config_o3climatology) then
+    block => domain % blocklist
+    do while(associated(block))
+
+       if((l_radtlw .and. trim(config_radt_lw_scheme) .eq. "rrtmg_lw") .or. &
+           l_radtsw .and. trim(config_radt_sw_scheme) .eq. "rrtmg_sw" ) then
+          call o3climatology_from_MPAS(curr_julday,block%mesh,block%atm_input,block%diag_physics)
+          write(0,*) '--- time to update the ozone climatology for RRTMG radiation codes'
+       endif
+    
+       block => block % next
+    end do 
+ endif
+
 !check to see if it is time to update the ozone trace gas path lengths,the total emissivity,
 !and the total absorptivity in the "CAM" long-wave radiation codes.
  if(trim(config_radt_lw_scheme) .eq. "cam_lw" .or. &
@@ -248,19 +285,20 @@
 
 !check to see if it is time to calculate additional physics diagnostics:
  l_diags = .false.
- call mpas_set_timeInterval(dtInterval,dt=dt,ierr=ierr)
- if(mpas_is_alarm_ringing(clock,diagAlarmID,ierr=ierr)) then
+ if (mpas_is_alarm_ringing(clock,diagAlarmID,ierr=ierr)) then
     call mpas_reset_clock_alarm(clock,diagAlarmID,ierr=ierr)
- else if(mpas_is_alarm_ringing(clock,diagAlarmID,interval=dtInterval,ierr=ierr)) then
+ end if
+ call mpas_set_timeInterval(dtInterval,dt=dt,ierr=ierr)
+ if (mpas_is_alarm_ringing(clock,diagAlarmID,interval=dtInterval,ierr=ierr)) then
     l_diags = .true.
- endif
+ end if
  write(0,*) '--- time to calculate additional physics_diagnostics               =',l_diags
 
  end subroutine physics_timetracker
 
-!=============================================================================================
+!==================================================================================================
  subroutine physics_run_init(mesh,state,clock)
-!=============================================================================================
+!==================================================================================================
 
 !input arguments:
  type(mesh_type),intent(in) :: mesh
@@ -272,7 +310,7 @@
  type(MPAS_TimeInterval_Type):: alarmTimeStep, alarmTimeStepHi
  integer:: ierr
 
-!=============================================================================================
+!==================================================================================================
  write(0,*)
  write(0,*) '--- enter subroutine physics_run_init:'
 
@@ -526,9 +564,11 @@
     !aerosols and ozone mixing ratios:
     num_aerosols  = state % num_aerosols
     num_aerLevels = mesh % naerLevels
-    num_oznLevels = mesh % noznLevels
 
  endif 
+
+!initialization of number of ozone levels:
+ num_oznlevels = mesh % noznLevels
 
 !initialization of sea-ice threshold:
  if(.not. config_frac_seaice) then
@@ -539,7 +579,7 @@
 
  end subroutine physics_run_init
 
-!=============================================================================================
+!==================================================================================================
  end module mpas_atmphys_manager
-!=============================================================================================
+!==================================================================================================
  

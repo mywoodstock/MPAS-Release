@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -73,8 +73,7 @@ contains
 !>  and tracers based user choices of mixing parameterization.
 !
 !-----------------------------------------------------------------------
-
-   subroutine ocn_vmix_coefs_rich_build(grid, s, d, err)!{{{
+   subroutine ocn_vmix_coefs_rich_build(mesh, state, diagnostics, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -83,7 +82,7 @@ contains
       !-----------------------------------------------------------------
 
       type (mesh_type), intent(in) :: &
-         grid          !< Input: grid information
+         mesh          !< Input: mesh information
 
       !-----------------------------------------------------------------
       !
@@ -92,10 +91,10 @@ contains
       !-----------------------------------------------------------------
 
       type (state_type), intent(inout) :: &
-         s             !< Input/Output: state information
+         state             !< Input/Output: state information
 
       type (diagnostics_type), intent(inout) :: &
-         d             !< Input/Output: diagnostic information
+         diagnostics             !< Input/Output: diagnostic information
 
       !-----------------------------------------------------------------
       !
@@ -130,37 +129,37 @@ contains
 
       err = 0
 
-      indexT = s%index_temperature
-      indexS = s%index_salinity
+      indexT = state % index_temperature
+      indexS = state % index_salinity
 
-      vertViscTopOfEdge => d % vertViscTopOfEdge % array
-      vertDiffTopOfCell => d % vertDiffTopOfCell % array
-      RiTopOfEdge => d % RiTopOfEdge % array
-      RiTopOfCell => d % RiTopOfCell % array
+      vertViscTopOfEdge => diagnostics % vertViscTopOfEdge % array
+      vertDiffTopOfCell => diagnostics % vertDiffTopOfCell % array
+      RiTopOfEdge => diagnostics % RiTopOfEdge % array
+      RiTopOfCell => diagnostics % RiTopOfCell % array
+      density => diagnostics % density % array
+      displacedDensity => diagnostics % displacedDensity % array
+      layerThicknessEdge => diagnostics % layerThicknessEdge % array
 
-      normalVelocity => s % normalVelocity % array
-      layerThickness => s % layerThickness % array
-      layerThicknessEdge => s % layerThicknessEdge % array
-      density => s % density % array
-      displacedDensity => s % displacedDensity % array
-      tracers => s % tracers % array
+      normalVelocity => state % normalVelocity % array
+      layerThickness => state % layerThickness % array
+      tracers => state % tracers % array
 
       call mpas_timer_start("eos rich", .false., richEOSTimer)
 
-         ! compute in-place density
-         call ocn_equation_of_state_density(s, grid, 0, 'relative', density, err)
+      ! compute in-place density
+      call ocn_equation_of_state_density(state, diagnostics, mesh, 0, 'relative', density, err)
 
-         ! compute displacedDensity, density displaced adiabatically to the mid-depth one layer deeper.  
-         ! That is, layer k has been displaced to the depth of layer k+1.
-         call ocn_equation_of_state_density(s, grid, 1, 'relative', displacedDensity, err)
+      ! compute displacedDensity, density displaced adiabatically to the mid-depth one layer deeper.  
+      ! That is, layer k has been displaced to the depth of layer k+1.
+      call ocn_equation_of_state_density(state, diagnostics, mesh, 1, 'relative', displacedDensity, err)
 
       call mpas_timer_stop("eos rich", richEOSTimer)
 
-      call ocn_vmix_get_rich_numbers(grid, indexT, indexS, normalVelocity, layerThickness, layerThicknessEdge, & 
+      call ocn_vmix_get_rich_numbers(mesh, indexT, indexS, normalVelocity, layerThickness, layerThicknessEdge, & 
                                   density, displacedDensity, tracers, RiTopOfEdge, RiTopOfCell, err1)
 
-      call ocn_vel_vmix_coefs_rich(grid, RiTopOfEdge, layerThicknessEdge, vertViscTopOfEdge, err2)
-      call ocn_tracer_vmix_coefs_rich(grid, RiTopOfCell, layerThickness, vertDiffTopOfCell, err3)
+      call ocn_vel_vmix_coefs_rich(mesh, RiTopOfEdge, layerThicknessEdge, vertViscTopOfEdge, err2)
+      call ocn_tracer_vmix_coefs_rich(mesh, RiTopOfCell, layerThickness, vertDiffTopOfCell, err3)
 
       err = ior(err1, ior(err2, err3))
 
@@ -180,7 +179,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_vel_vmix_coefs_rich(grid, RiTopOfEdge, layerThicknessEdge, vertViscTopOfEdge, err)!{{{
+   subroutine ocn_vel_vmix_coefs_rich(mesh, RiTopOfEdge, layerThicknessEdge, vertViscTopOfEdge, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -189,7 +188,7 @@ contains
       !-----------------------------------------------------------------
 
       type (mesh_type), intent(in) :: &
-         grid          !< Input: grid information
+         mesh          !< Input: mesh information
 
       real (kind=RKIND), dimension(:,:), intent(in) :: &
          layerThicknessEdge        !< Input: thickness at edge
@@ -227,9 +226,9 @@ contains
 
       if(.not.richViscOn) return
 
-      nEdges = grid % nEdges
+      nEdges = mesh % nEdges
 
-      maxLevelEdgeTop => grid % maxLevelEdgeTop % array
+      maxLevelEdgeTop => mesh % maxLevelEdgeTop % array
 
       do iEdge = 1,nEdges
          do k = 2,maxLevelEdgeTop(iEdge)
@@ -265,7 +264,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_tracer_vmix_coefs_rich(grid, RiTopOfCell, layerThickness, vertDiffTopOfCell, err)!{{{
+   subroutine ocn_tracer_vmix_coefs_rich(mesh, RiTopOfCell, layerThickness, vertDiffTopOfCell, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -274,7 +273,7 @@ contains
       !-----------------------------------------------------------------
 
       type (mesh_type), intent(in) :: &
-         grid          !< Input: grid information
+         mesh          !< Input: mesh information
 
       real (kind=RKIND), dimension(:,:), intent(in) :: &
          layerThickness             !< Input: thickness at cell center
@@ -314,9 +313,9 @@ contains
 
       if(.not.richDiffOn) return
 
-      nCells = grid % nCells
+      nCells = mesh % nCells
 
-      maxLevelCell => grid % maxLevelCell % array
+      maxLevelCell => mesh % maxLevelCell % array
 
       coef = -gravity/config_density0/2.0
       do iCell = 1,nCells
@@ -356,7 +355,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_vmix_get_rich_numbers(grid, indexT, indexS, normalVelocity, layerThickness, layerThicknessEdge, & !{{{
+   subroutine ocn_vmix_get_rich_numbers(mesh, indexT, indexS, normalVelocity, layerThickness, layerThicknessEdge, & !{{{
                                  density, displacedDensity, tracers, RiTopOfEdge, RiTopOfCell, err)
 
       !-----------------------------------------------------------------
@@ -366,7 +365,7 @@ contains
       !-----------------------------------------------------------------
 
       type (mesh_type), intent(in) :: &
-         grid          !< Input: grid information
+         mesh          !< Input: mesh information
 
       integer, intent(in) :: indexT !< Input: index for temperature
       integer, intent(in) :: indexS !< Input: index for salinity
@@ -417,20 +416,20 @@ contains
 
       if((.not.richViscOn) .and. (.not.richDiffOn)) return
 
-      nVertLevels = grid % nVertLevels
-      nCells = grid % nCells
-      nEdges = grid % nEdges
+      nVertLevels = mesh % nVertLevels
+      nCells = mesh % nCells
+      nEdges = mesh % nEdges
 
-      maxLevelCell => grid % maxLevelCell % array
-      maxLevelEdgeTop => grid % maxLevelEdgeTop % array
-      maxLevelEdgeBot => grid % maxLevelEdgeBot % array
-      cellsOnEdge => grid % cellsOnEdge % array
-      dvEdge => grid % dvEdge % array
-      dcEdge => grid % dcEdge % array
-      areaCell => grid % areaCell % array
-      nEdgesOnCell => grid % nEdgesOnCell % array
-      edgesOnCell => grid % edgesOnCell % array
-      edgeSignOnCell => grid % edgeSignOnCell % array
+      maxLevelCell => mesh % maxLevelCell % array
+      maxLevelEdgeTop => mesh % maxLevelEdgeTop % array
+      maxLevelEdgeBot => mesh % maxLevelEdgeBot % array
+      cellsOnEdge => mesh % cellsOnEdge % array
+      dvEdge => mesh % dvEdge % array
+      dcEdge => mesh % dcEdge % array
+      areaCell => mesh % areaCell % array
+      nEdgesOnCell => mesh % nEdgesOnCell % array
+      edgesOnCell => mesh % edgesOnCell % array
+      edgeSignOnCell => mesh % edgeSignOnCell % array
 
       allocate( &
          ddensityTopOfCell(nVertLevels+1,nCells+1), ddensityTopOfEdge(nVertLevels+1,nEdges), &

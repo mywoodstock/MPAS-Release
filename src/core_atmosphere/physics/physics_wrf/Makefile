@@ -48,6 +48,9 @@ module_ra_cam.o: \
 	module_ra_cam_support.o \
 	../mpas_atmphys_utilities.o
 
+module_ra_cam_support.o: \
+	../mpas_atmphys_utilities.o
+
 module_ra_rrtmg_lw.o: \
 	../mpas_atmphys_constants.o
 
@@ -75,5 +78,9 @@ clean:
 	$(RM) *.f90 *.o *.mod
 
 .F.o:
-	$(CPP) $(CPPFLAGS) $(COREDEF) $(CPPINCLUDES) -DIWORDSIZE=4 -DRWORDSIZE=8 $< > $*.f90
+ifeq "$(GEN_F90)" "true"
+	$(CPP) $(CPPFLAGS) $(COREDEF) $(CPPINCLUDES) $< > $*.f90
 	$(FC) $(FFLAGS) -c $*.f90 $(FCINCLUDES) -I../../../framework -I../../../operators -I..
+else
+	$(FC) $(CPPFLAGS) $(COREDEF) $(FFLAGS) -c $*.F $(CPPINCLUDES) $(FCINCLUDES) -I../../../framework -I../../../operators -I..
+endif

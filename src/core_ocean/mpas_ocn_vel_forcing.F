@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -22,6 +22,8 @@ module ocn_vel_forcing
 
    use mpas_grid_types
    use mpas_configure
+
+   use ocn_forcing
 
    use ocn_vel_forcing_windstress
    use ocn_vel_forcing_rayleigh
@@ -73,7 +75,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_vel_forcing_tend(grid, u, normalVelocityForcing, layerThicknessEdge, tend, err)!{{{
+   subroutine ocn_vel_forcing_tend(mesh, normalVelocity, surfaceWindStress, layerThicknessEdge, tend, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -82,16 +84,16 @@ contains
       !-----------------------------------------------------------------
 
       real (kind=RKIND), dimension(:,:), intent(in) :: &
-         u    !< Input: velocity
+         normalVelocity    !< Input: Normal velocity at edges
 
-      real (kind=RKIND), dimension(:,:), intent(in) :: &
-         normalVelocityForcing     !< Input: wind stress
+      real (kind=RKIND), dimension(:), intent(in) :: &
+         surfaceWindStress     !< Input: Wind stress at surface of normal velocity at edges
 
       real (kind=RKIND), dimension(:,:), intent(in) :: &
          layerThicknessEdge     !< Input: thickness at edge
 
       type (mesh_type), intent(in) :: &
-         grid          !< Input: grid information
+         mesh          !< Input: mesh information
 
       !-----------------------------------------------------------------
       !
@@ -126,8 +128,8 @@ contains
       !
       !-----------------------------------------------------------------
 
-      call ocn_vel_forcing_windstress_tend(grid, normalVelocityForcing, layerThicknessEdge, tend, err1)
-      call ocn_vel_forcing_rayleigh_tend(grid, u, tend, err2)
+      call ocn_vel_forcing_windstress_tend(mesh, surfaceWindStress, layerThicknessEdge, tend, err1)
+      call ocn_vel_forcing_rayleigh_tend(mesh, normalVelocity, tend, err2)
 
       err = ior(err1, err2)
 

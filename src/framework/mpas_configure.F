@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -18,6 +18,7 @@
 module mpas_configure
 
    use mpas_dmpar
+   use mpas_io_units
 
 #include "config_defs.inc"
 
@@ -51,16 +52,16 @@ module mpas_configure
 
       if (dminfo % my_proc_id == IO_NODE) then
          if (present(nml_filename)) then
-            write(0,*) 'Reading ', trim(nml_filename)
+            write(stderrUnit,*) 'Reading ', trim(nml_filename)
             open(funit,file=trim(nml_filename),status='old',form='formatted')
          else
-            write(0,*) 'Reading namelist.input'
+            write(stderrUnit,*) 'Reading namelist.input'
             open(funit,file='namelist.input',status='old',form='formatted')
          end if
 
 #include "config_namelist_reads.inc"
          close(funit)
-         write(0,*) ' '
+         write(stderrUnit,*) ' '
       end if
 
 #include "config_bcast_namelist.inc"

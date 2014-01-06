@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -114,7 +114,7 @@ module mpas_core
       integer :: ierr
 
       if(trim(config_start_time) == 'file') then
-         open(22,file='restart_timestamp',form='formatted',status='old')
+         open(22,file=trim(config_restart_timestamp_name),form='formatted',status='old')
          read(22,*) startTimeStamp
          close(22)
       else
@@ -232,8 +232,11 @@ module mpas_core
          call physics_run_init(mesh,block % state % time_levs(1) % state,clock)
 
          !initialization of all physics:
-         call physics_init(dminfo, clock, config_do_restart, mesh, block % state % time_levs(1) % state, &
-                           block % state % time_levs(1) % state, block % diag_physics, block % sfc_input)
+         call physics_init(dminfo, clock, config_do_restart, mesh, block % diag, &
+                           block % state % time_levs(1) % state, &
+                           block % state % time_levs(1) % state, &
+                           block % diag_physics, block % atm_input, &
+                           block % sfc_input)
 
       endif
 #endif
@@ -286,7 +289,8 @@ module mpas_core
 
       if (trim(config_hifreq_output_interval) /= 'none') then
          block_ptr => domain % blocklist
-         call atm_compute_output_diagnostics(block_ptr % state % time_levs(1) % state, block_ptr % diag, block_ptr % mesh)
+         call atm_compute_output_diagnostics(block_ptr % state % time_levs(1) % state, block_ptr % diag, &
+                                             block_ptr % diag_physics, block_ptr % mesh)
 
          currTime = mpas_get_clock_time(clock, MPAS_NOW, ierr)
          call mpas_get_time(curr_time=currTime, dateTimeString=timeStamp, ierr=ierr)
@@ -341,7 +345,8 @@ module mpas_core
             call mpas_reset_clock_alarm(clock, hifreqAlarmID, ierr=ierr)
 
             block_ptr => domain % blocklist
-            call atm_compute_output_diagnostics(block_ptr % state % time_levs(1) % state, block_ptr % diag, block_ptr % mesh)
+            call atm_compute_output_diagnostics(block_ptr % state % time_levs(1) % state, block_ptr % diag, &
+                                                block_ptr % diag_physics, block_ptr % mesh)
 
             call insert_string_suffix('diagnostics.nc', trim(timeStamp), tempfilename)
             call write_hifreq_output(block_ptr, tempfilename)
@@ -388,7 +393,8 @@ module mpas_core
    
       block_ptr => domain % blocklist
       do while (associated(block_ptr))
-         call atm_compute_output_diagnostics(block_ptr % state % time_levs(1) % state, block_ptr % diag, block_ptr % mesh)
+         call atm_compute_output_diagnostics(block_ptr % state % time_levs(1) % state, block_ptr % diag, &
+                                             block_ptr % diag_physics, block_ptr % mesh)
          block_ptr => block_ptr % next
       end do
    
@@ -407,7 +413,7 @@ module mpas_core
    end subroutine atm_write_output_frame
    
    
-   subroutine atm_compute_output_diagnostics(state, diag, grid)
+   subroutine atm_compute_output_diagnostics(state, diag, diag_physics, grid)
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    ! Compute diagnostic fields for a domain to be written to history files
    !
@@ -425,6 +431,7 @@ module mpas_core
    
       type (state_type), intent(inout) :: state
       type (diag_type), intent(inout) :: diag
+      type (diag_physics_type), intent(inout) :: diag_physics
       type (mesh_type), intent(in) :: grid
    
       integer :: iCell, k
@@ -436,7 +443,7 @@ module mpas_core
          end do
       end do
 
-      call interp_diagnostics(grid,state,diag)
+      call interp_diagnostics(grid,state,diag,diag_physics)
    
    end subroutine atm_compute_output_diagnostics
    
@@ -902,5 +909,31 @@ module mpas_core
       end do ! end loop over edges
 
    end subroutine atm_adv_coef_compression
+
+!***********************************************************************
+!
+!  routine mpas_core_setup_packages
+!
+!> \brief   Pacakge setup routine
+!> \author  Doug Jacobsen
+!> \date    September 2011
+!> \details 
+!>  This routine is intended to correctly configure the packages for this MPAS
+!>   core. It can use any Fortran logic to properly configure packages, and it
+!>   can also make use of any namelist options. All variables in the model are
+!>   *not* allocated until after this routine is called.
+!
+!-----------------------------------------------------------------------
+   subroutine mpas_core_setup_packages(ierr)!{{{
+
+      use mpas_packages
+
+      implicit none
+
+      integer, intent(out) :: ierr
+
+      ierr = 0
+
+   end subroutine mpas_core_setup_packages!}}}
 
 end module mpas_core

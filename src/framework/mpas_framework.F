@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -21,10 +21,10 @@ module mpas_framework
    use mpas_grid_types
    use mpas_io_input
    use mpas_io_output
-   use mpas_configure
    use mpas_timer
    use mpas_timekeeping
    use mpas_io
+   use mpas_io_units
 
 
    contains
@@ -39,7 +39,7 @@ module mpas_framework
 !>  This routine initializes the MPAS framework. It calls routines related to initializing different parts of MPAS, that are housed within the framework.
 !
 !-----------------------------------------------------------------------
-   subroutine mpas_framework_init(dminfo, domain, mpi_comm, nml_filename, io_system)!{{{
+   subroutine mpas_framework_init(dminfo, domain, mpi_comm, nml_filename, io_system, calendar, stdoutUnit, stderrUnit)!{{{
 
       implicit none
 
@@ -49,18 +49,26 @@ module mpas_framework
 
       character (len=*), optional :: nml_filename
       type (iosystem_desc_t), optional, pointer :: io_system
+      character(len=*), intent(in), optional :: calendar
+
+      integer, intent(in), optional :: stdoutUnit, stderrUnit
 
       integer :: pio_num_iotasks
       integer :: pio_stride
 
       allocate(dminfo)
+      call mpas_io_units_init(stdoutUnit, stderrUnit)
       call mpas_dmpar_init(dminfo, mpi_comm)
 
       call mpas_read_namelist(dminfo, nml_filename)
 
       call mpas_allocate_domain(domain, dminfo)
       
-      call mpas_timekeeping_init(config_calendar_type)
+      if(present(calendar)) then
+        call mpas_timekeeping_init(calendar)
+      else
+        call mpas_timekeeping_init(config_calendar_type)
+      end if
 
       pio_num_iotasks = config_pio_num_iotasks
       pio_stride = config_pio_stride

@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -25,16 +25,18 @@ module mpas_core
    use mpas_timekeeping
    use mpas_dmpar
    use mpas_timer
+   use mpas_io_units
 
    use ocn_global_diagnostics
    use ocn_time_integration
    use ocn_tendency
    use ocn_diagnostics
-
-   use ocn_monthly_forcing
+   use ocn_test
 
    use ocn_thick_hadv
    use ocn_thick_vadv
+   use ocn_thick_ale
+   use ocn_thick_surface_flux
 
    use ocn_vel_pressure_grad
    use ocn_vel_vadv
@@ -43,14 +45,20 @@ module mpas_core
    use ocn_vel_coriolis
 
    use ocn_tracer_hmix
+   use ocn_tracer_surface_flux
+   use ocn_tracer_short_wave_absorption
    use ocn_gm
-   use ocn_restoring
 
    use ocn_equation_of_state
 
    use ocn_vmix
 
    use ocn_time_average
+
+   use ocn_forcing
+   use ocn_sea_ice
+
+   use ocn_constants
 
    type (io_output_object), save :: restart_obj
 
@@ -61,8 +69,9 @@ module mpas_core
    integer, parameter :: outputAlarmID = 1
    integer, parameter :: restartAlarmID = 2
    integer, parameter :: statsAlarmID = 3
+   integer, parameter :: coupleAlarmID = 4
 
-   type (timer_node), pointer :: globalDiagTimer, timeIntTimer
+   type (timer_node), pointer :: globalDiagTimer, timeIntTimer, testSuiteTimer
    type (timer_node), pointer :: initDiagSolveTimer
 
    contains
@@ -83,7 +92,7 @@ module mpas_core
    subroutine mpas_core_init(domain, startTimeStamp)!{{{
 
       use mpas_grid_types
-      use mpas_ocn_tracer_advection
+      use ocn_tracer_advection
 
       implicit none
 
@@ -104,9 +113,12 @@ module mpas_core
 
       call ocn_thick_hadv_init(err_tmp)
       err = ior(err, err_tmp)
-
       call ocn_thick_vadv_init(err_tmp)
       err = ior(err, err_tmp)
+      call ocn_thick_surface_flux_init(err_tmp)
+      err = ior(err, err_tmp)
+      call ocn_thick_ale_init(err_tmp)
+      err = ior(err,err_tmp)
 
       call ocn_vel_coriolis_init(err_tmp)
       err = ior(err, err_tmp)
@@ -121,10 +133,14 @@ module mpas_core
 
       call ocn_tracer_hmix_init(err_tmp)
       err = ior(err, err_tmp)
-      call ocn_restoring_init(err_tmp)
+      call ocn_tracer_surface_flux_init(err_tmp)
       err = ior(err, err_tmp)
+      call ocn_tracer_advection_init(err_tmp)
+      err = ior(err,err_tmp)
+      call ocn_tracer_short_wave_absorption_init(err_tmp)
+      err = ior(err,err_tmp)
 
-      call ocn_vmix_init(err_tmp)
+      call ocn_vmix_init(domain,err_tmp)
       err = ior(err, err_tmp)
 
       call ocn_equation_of_state_init(err_tmp)
@@ -135,14 +151,17 @@ module mpas_core
       call ocn_diagnostics_init(err_tmp)
       err = ior(err,err_tmp)
 
-      call mpas_ocn_tracer_advection_init(err_tmp)
+      call ocn_forcing_init(err_tmp)
       err = ior(err,err_tmp)
 
-      call ocn_monthly_forcing_init(err_tmp)
-      err = ior(err, err_tmp)
 
       call ocn_global_diagnostics_init(dminfo,err_tmp)
       err = ior(err, err_tmp)
+
+      call ocn_sea_ice_init(domain % blocklist % mesh % nVertLevels, err_tmp)
+      err = ior(err, err_tmp)
+
+      call ocn_constants_init()
 
       call mpas_timer_init(domain)
 
@@ -150,37 +169,37 @@ module mpas_core
           call mpas_dmpar_abort(dminfo)
       endif
 
-      if (config_vert_coord_movement.ne.'isopycnal') call ocn_init_vert_coord(domain)
+      call ocn_init_vert_coord(domain)
 
       call ocn_compute_max_level(domain)
 
       if (.not.config_do_restart) call ocn_init_split_timestep(domain)
 
-      write (0,'(a,a)') ' Vertical coordinate movement is: ',trim(config_vert_coord_movement)
+      write (stdoutUnit,'(a,a)') ' Vertical coordinate movement is: ',trim(config_vert_coord_movement)
 
-      if (config_vert_coord_movement.ne.'isopycnal'.and. &
-          config_vert_coord_movement.ne.'fixed'.and. &
+      if (config_vert_coord_movement.ne.'fixed'.and. &
           config_vert_coord_movement.ne.'uniform_stretching'.and. &
+          config_vert_coord_movement.ne.'impermeable_interfaces'.and. &
           config_vert_coord_movement.ne.'user_specified') then
-         write (0,*) ' Incorrect choice of config_vert_coord_movement.'
+         write (stderrUnit,*) ' Incorrect choice of config_vert_coord_movement.'
          call mpas_dmpar_abort(dminfo)
       endif
 
-      write (0,'(a,a)') ' Pressure type is: ',trim(config_pressure_gradient_type)
+      write (stdoutUnit,'(a,a)') ' Pressure type is: ',trim(config_pressure_gradient_type)
       if (config_pressure_gradient_type.ne.'pressure_and_zmid'.and. &
           config_pressure_gradient_type.ne.'MontgomeryPotential') then
-         write (0,*) ' Incorrect choice of config_pressure_gradient_type.'
+         write (stderrUnit,*) ' Incorrect choice of config_pressure_gradient_type.'
          call mpas_dmpar_abort(dminfo)
       endif
 
-      if(config_vert_coord_movement .ne. 'isopycnal' .and. config_pressure_gradient_type .eq. 'MontgomeryPotential') then
-         write (0,*) ' Incorrect combination of config_vert_coord_movement and config_pressure_gradient_type'
+      if(config_vert_coord_movement .ne. 'impermeable_interfaces' .and. config_pressure_gradient_type .eq. 'MontgomeryPotential') then
+         write (stderrUnit,*) ' Incorrect combination of config_vert_coord_movement and config_pressure_gradient_type'
          call mpas_dmpar_abort(dminfo)
       end if
 
       if (config_filter_btr_mode.and. &
           config_vert_coord_movement.ne.'fixed')then
-         write (0,*) 'filter_btr_mode has only been tested with'// &
+         write (stderrUnit,*) 'filter_btr_mode has only been tested with'// &
             ' config_vert_coord_movement=fixed.'
          call mpas_dmpar_abort(dminfo)
       endif
@@ -210,14 +229,20 @@ module mpas_core
          if(err.eq.1) then
              call mpas_dmpar_abort(dminfo)
          endif
-         block % state % time_levs(1) % state % xtime % scalar = startTimeStamp 
+         block % diagnostics % xtime % scalar = startTimeStamp 
          block => block % next
       end do
 
+      if (config_conduct_tests) then
+         call mpas_timer_start("test suite", .false., testSuiteTimer)
+         call ocn_test_suite(domain,err)
+         call mpas_timer_stop("test suite", testSuiteTimer)
+      endif
+
       if (config_write_stats_on_startup) then
-          call mpas_timer_start("global diagnostics", .false., globalDiagTimer)
-          call ocn_compute_global_diagnostics(domain, 1 , 0, dt)
-          call mpas_timer_stop("global diagnostics", globalDiagTimer)
+         call mpas_timer_start("global diagnostics", .false., globalDiagTimer)
+         call ocn_compute_global_diagnostics(domain, 1 , 0, dt)
+         call mpas_timer_stop("global diagnostics", globalDiagTimer)
       endif
 
       current_outfile_frames = 0
@@ -250,7 +275,7 @@ module mpas_core
       integer :: ierr
 
       if(config_start_time == 'file') then
-        open(22,file='restart_timestamp',form='formatted',status='old')
+        open(22,file=config_restart_timestamp_name,form='formatted',status='old')
         read(22,*) restartTimeStamp
         close(22)
         call mpas_set_time(curr_time=startTime, dateTimeString=restartTimeStamp, ierr=ierr)
@@ -266,14 +291,14 @@ module mpas_core
          if (trim(config_stop_time) /= "none") then
             call mpas_set_time(curr_time=stopTime, dateTimeString=config_stop_time, ierr=ierr)
             if(startTime + runduration /= stopTime) then
-               write(0,*) 'Warning: config_run_duration and config_stop_time are inconsitent: using config_run_duration.'
+               write(stderrUnit,*) 'Warning: config_run_duration and config_stop_time are inconsitent: using config_run_duration.'
             end if
          end if
       else if (trim(config_stop_time) /= "none") then
          call mpas_set_time(curr_time=stopTime, dateTimeString=config_stop_time, ierr=ierr)
          call mpas_create_clock(clock, startTime=startTime, timeStep=timeStep, stopTime=stopTime, ierr=ierr)
       else
-          write(0,*) 'Error: Neither config_run_duration nor config_stop_time were specified.'
+          write(stderrUnit,*) 'Error: Neither config_run_duration nor config_stop_time were specified.'
           call mpas_dmpar_finalize(domain % dminfo)
       end if
 
@@ -319,9 +344,9 @@ module mpas_core
    
       use mpas_grid_types
       use mpas_rbf_interpolation
+      use mpas_vector_operations
       use mpas_vector_reconstruction
-      use mpas_ocn_tracer_advection
-      use ocn_advection
+      use mpas_tracer_advection_helpers
    
       implicit none
    
@@ -333,36 +358,44 @@ module mpas_core
       integer :: err1
    
       call ocn_setup_sign_and_index_fields(mesh)
-      call ocn_initialize_advection_rk(mesh, err)
-      call mpas_ocn_tracer_advection_coefficients(mesh, err1)
+      call mpas_initialize_deriv_two(mesh, mesh % derivTwo % array, err)
+      call mpas_tracer_advection_coefficients(mesh, &
+          config_horiz_tracer_adv_order, mesh % derivTwo % array, mesh % advCoefs % array, &
+          mesh % advCoefs3rd % array, mesh % nAdvCellsForEdge % array, mesh % advCellsForEdge % array, &
+          err1, mesh % maxLevelCell % array, mesh % highOrderAdvectionMask % array, &
+          mesh % boundaryCell % array)
       err = ior(err, err1)
 
-      call ocn_time_average_init(block % state % time_levs(1) % state)
+      call ocn_time_average_init(block % average)
    
       call mpas_timer_start("diagnostic solve", .false., initDiagSolveTimer)
-      call ocn_diagnostic_solve(dt,  block % state % time_levs(1) % state, mesh, block % scratch)
+      call ocn_diagnostic_solve(dt,  block % state % time_levs(1) % state, block % forcing, mesh, block % diagnostics, block % scratch)
       call mpas_timer_stop("diagnostic solve", initDiagSolveTimer)
 
       ! Compute velocity transport, used in advection terms of layerThickness and tracer tendency
-        block % state % time_levs(1) % state % uTransport % array(:,:) &
-      = block % state % time_levs(1) % state % normalVelocity % array(:,:) &
-      + block % state % time_levs(1) % state % uBolusGM % array(:,:)
+      block % diagnostics % uTransport % array(:,:) &
+            = block % state % time_levs(1) % state % normalVelocity % array(:,:) &
+            + block % diagnostics % uBolusGM % array(:,:)
 
       call ocn_compute_mesh_scaling(mesh)
  
       call mpas_rbf_interp_initialize(mesh)
+      call mpas_initialize_tangent_vectors(mesh, mesh % edgeTangentVectors % array)
+
       call mpas_init_reconstruct(mesh)
       call mpas_reconstruct(mesh, block % state % time_levs(1) % state % normalVelocity % array,                  &
-                       block % state % time_levs(1) % state % normalVelocityX % array,            &
-                       block % state % time_levs(1) % state % normalVelocityY % array,            &
-                       block % state % time_levs(1) % state % normalVelocityZ % array,            &
-                       block % state % time_levs(1) % state % normalVelocityZonal % array,        &
-                       block % state % time_levs(1) % state % normalVelocityMeridional % array    &
+                       block % diagnostics % normalVelocityX % array,            &
+                       block % diagnostics % normalVelocityY % array,            &
+                       block % diagnostics % normalVelocityZ % array,            &
+                       block % diagnostics % normalVelocityZonal % array,        &
+                       block % diagnostics % normalVelocityMeridional % array    &
                       )
 
       ! initialize velocities and tracers on land to be zero.
 
       block % mesh % areaCell % array(block % mesh % nCells+1) = -1.0e34
+
+      block % state % time_levs(1) % state % layerThickness % array(:,block % mesh % nCells+1) = 0.0
 
       do iEdge=1,block % mesh % nEdges
          block % state % time_levs(1) % state % normalVelocity % array( &
@@ -425,7 +458,7 @@ module mpas_core
 
       currTime = mpas_get_clock_time(clock, MPAS_NOW, ierr)
       call mpas_get_time(curr_time=currTime, dateTimeString=timeStamp, ierr=ierr)
-      write(0,*) 'Initial time ', trim(timeStamp)
+      write(stderrUnit,*) 'Initial time ', trim(timeStamp)
 
       if (config_write_output_on_startup) then
          call ocn_write_output_frame(output_obj, output_frame, domain)
@@ -433,7 +466,7 @@ module mpas_core
       block_ptr => domain % blocklist
 
       do while(associated(block_ptr))
-        call ocn_time_average_init(block_ptr % state % time_levs(1) % state)
+        call ocn_time_average_init(block_ptr % average)
         block_ptr => block_ptr % next
       end do
 
@@ -447,11 +480,12 @@ module mpas_core
 
          currTime = mpas_get_clock_time(clock, MPAS_NOW, ierr)
          call mpas_get_time(curr_time=currTime, dateTimeString=timeStamp, ierr=ierr)
-         write(0,*) 'Doing timestep ', trim(timeStamp)
+         write(stderrUnit,*) 'Doing timestep ', trim(timeStamp)
    
          block_ptr => domain % blocklist
          do while(associated(block_ptr))
-           call ocn_build_forcing_arrays(currTime, block_ptr % mesh, ierr)
+           call ocn_forcing_build_arrays(block_ptr % mesh, block_ptr % state % time_levs(1) % state, block_ptr % forcing, ierr)
+           call ocn_forcing_build_transmission_array(block_ptr % mesh, block_ptr % state % time_levs(1) % state, block_ptr % forcing, ierr)
            block_ptr => block_ptr % next
          end do
 
@@ -477,7 +511,7 @@ module mpas_core
 
             block_ptr => domain % blocklist
             do while (associated(block_ptr))
-                call ocn_time_average_normalize(block_ptr % state % time_levs(1) % state)
+                call ocn_time_average_normalize(block_ptr % average)
                 block_ptr => block_ptr % next
             end do
 
@@ -485,7 +519,7 @@ module mpas_core
 
             block_ptr => domain % blocklist
             do while (associated(block_ptr))
-                call ocn_time_average_init(block_ptr % state % time_levs(1) % state)
+                call ocn_time_average_init(block_ptr % average)
                 block_ptr => block_ptr % next
             end do
          end if
@@ -530,26 +564,32 @@ module mpas_core
       do while (associated(block_ptr))
          call ocn_compute_output_diagnostics(block_ptr % state % time_levs(1) % state, block_ptr % mesh)
 
-         call mpas_allocate_scratch_field(block_ptr % scratch % normalVelocityForcingX, .true.)
-         call mpas_allocate_scratch_field(block_ptr % scratch % normalVelocityForcingY, .true.)
-         call mpas_allocate_scratch_field(block_ptr % scratch % normalVelocityForcingZ, .true.)
-         call mpas_allocate_scratch_field(block_ptr % scratch % normalVelocityForcingZonal, .true.)
-         call mpas_allocate_scratch_field(block_ptr % scratch % normalVelocityForcingMeridional, .true.)
+         call mpas_allocate_scratch_field(block_ptr % scratch % windStressFull, .true.)
+         call mpas_allocate_scratch_field(block_ptr % scratch % windStressX, .true.)
+         call mpas_allocate_scratch_field(block_ptr % scratch % windStressY, .true.)
+         call mpas_allocate_scratch_field(block_ptr % scratch % windStressZ, .true.)
+         call mpas_allocate_scratch_field(block_ptr % scratch % windStressZonal, .true.)
+         call mpas_allocate_scratch_field(block_ptr % scratch % windStressMeridional, .true.)
 
-         call mpas_reconstruct(block_ptr % mesh, block_ptr % mesh % normalVelocityForcing % array, &
-                               block_ptr % scratch % normalVelocityForcingX % array, &
-                               block_ptr % scratch % normalVelocityForcingY % array, &
-                               block_ptr % scratch % normalVelocityForcingZ % array, &
-                               block_ptr % scratch % normalVelocityForcingZonal % array, &
-                               block_ptr % scratch % normalVelocityForcingMeridional % array)
+         block_ptr % scratch % windStressFull % array = 0.0_RKIND
+         block_ptr % scratch % windStressFull % array(1,:) = block_ptr % forcing % surfaceWindStress % array
 
-         block_ptr % diagnostics % windStressZonal % array = block_ptr % scratch % normalVelocityForcingZonal % array(1,:)
-         block_ptr % diagnostics % windStressMeridional % array = block_ptr % scratch % normalVelocityForcingMeridional % array(1,:)
-         call mpas_deallocate_scratch_field(block_ptr % scratch % normalVelocityForcingX, .true.)
-         call mpas_deallocate_scratch_field(block_ptr % scratch % normalVelocityForcingY, .true.)
-         call mpas_deallocate_scratch_field(block_ptr % scratch % normalVelocityForcingZ, .true.)
-         call mpas_deallocate_scratch_field(block_ptr % scratch % normalVelocityForcingZonal, .true.)
-         call mpas_deallocate_scratch_field(block_ptr % scratch % normalVelocityForcingMeridional, .true.)
+         call mpas_reconstruct(block_ptr % mesh, block_ptr % scratch % windStressFull % array, &
+                               block_ptr % scratch % windStressX % array, &
+                               block_ptr % scratch % windStressY % array, &
+                               block_ptr % scratch % windStressZ % array, &
+                               block_ptr % scratch % windStressZonal % array, &
+                               block_ptr % scratch % windStressMeridional % array)
+
+         block_ptr % diagnostics % windStressZonalDiag % array(:) = block_ptr % scratch % windStressZonal % array(1,:)
+         block_ptr % diagnostics % windStressMeridionalDiag % array(:) = block_ptr % scratch % windStressMeridional % array(1,:)
+
+         call mpas_deallocate_scratch_field(block_ptr % scratch % windStressFull, .true.)
+         call mpas_deallocate_scratch_field(block_ptr % scratch % windStressX, .true.)
+         call mpas_deallocate_scratch_field(block_ptr % scratch % windStressY, .true.)
+         call mpas_deallocate_scratch_field(block_ptr % scratch % windStressZ, .true.)
+         call mpas_deallocate_scratch_field(block_ptr % scratch % windStressZonal, .true.)
+         call mpas_deallocate_scratch_field(block_ptr % scratch % windStressMeridional, .true.)
 
          block_ptr => block_ptr % next
       end do
@@ -568,12 +608,12 @@ module mpas_core
    
    end subroutine ocn_write_output_frame!}}}
    
-   subroutine ocn_compute_output_diagnostics(state, grid)!{{{
+   subroutine ocn_compute_output_diagnostics(state, mesh)!{{{
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    ! Compute diagnostic fields for a domain
    !
    ! Input: state - contains model prognostic fields
-   !        grid  - contains grid metadata
+   !        mesh  - contains mesh metadata
    !
    ! Output: state - upon returning, diagnostic fields will have be computed
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -583,7 +623,7 @@ module mpas_core
       implicit none
    
       type (state_type), intent(inout) :: state
-      type (mesh_type), intent(in) :: grid
+      type (mesh_type), intent(in) :: mesh
    
       integer :: i, eoe
       integer :: iEdge, k
@@ -633,7 +673,7 @@ module mpas_core
 
 !        block_ptr => domain % blocklist
 !        if (associated(block_ptr % next)) then
-!           write(0,*) 'Error: computeGlobalDiagnostics assumes ',&
+!           write(stderrUnit,*) 'Error: computeGlobalDiagnostics assumes ',&
 !                      'that there is only one block per processor.'
 !        end if
    
@@ -659,7 +699,7 @@ module mpas_core
       type (domain_type), intent(inout) :: domain
       type (dm_info) :: dminfo
 
-      integer :: i, iCell, iEdge, iVertex, k, nCells, num_tracers
+      integer :: i, iCell, iEdge, iVertex, k, km1, nCells, num_tracers
       type (block_type), pointer :: block
 
       integer :: iTracer, cell, cell1, cell2
@@ -667,15 +707,15 @@ module mpas_core
 
       integer, dimension(:), pointer :: maxLevelCell
       real (kind=RKIND), dimension(:), pointer :: refBottomDepth, &
-         refBottomDepthTopOfCell, vertCoordMovementWeights, bottomDepth
+         refBottomDepthTopOfCell, vertCoordMovementWeights, bottomDepth, refZMid, refLayerThickness
       real (kind=RKIND), dimension(:), allocatable :: minBottomDepth, minBottomDepthMid, zMidZLevel
          
-      real (kind=RKIND), dimension(:,:), pointer :: layerThickness
+      real (kind=RKIND), dimension(:,:), pointer :: layerThickness, restingThickness
       real (kind=RKIND), dimension(:,:,:), pointer :: tracers
       integer :: nVertLevels
       logical :: consistentSSH
 
-      ! Initialize z-level grid variables from h, read in from input file.
+      ! Initialize z-level mesh variables from h, read in from input file.
       block => domain % blocklist
       do while (associated(block))
 
@@ -687,6 +727,10 @@ module mpas_core
          vertCoordMovementWeights => block % mesh % vertCoordMovementWeights % array
          maxLevelCell => block % mesh % maxLevelCell % array
 
+         restingThickness => block % verticalMesh % restingThickness % array
+         refZMid => block % verticalMesh % refZMid % array
+         refLayerThickness => block % verticalMesh % refLayerThickness % array
+
          nCells      = block % mesh % nCells
          nVertLevels = block % mesh % nVertLevels
          num_tracers = size(tracers, dim=1)
@@ -695,6 +739,8 @@ module mpas_core
          refBottomDepthTopOfCell(1) = 0.0
          do k = 1,nVertLevels
             refBottomDepthTopOfCell(k+1) = refBottomDepth(k)
+            refLayerThickness(k) = refBottomDepth(k) - refBottomDepthTopOfCell(k)
+            refZMid(k) = - refBottomDepthTopOfCell(1) - refLayerThickness(k)/2.0
          end do
 
          ! Initialization of vertCoordMovementWeights. This determines how SSH perturbations
@@ -719,78 +765,86 @@ module mpas_core
          !    If your input file does not include bottomDepth, the false option will
          !    initialize bottomDepth correctly for a non-pbc run.
 
+         if (.not.config_do_restart.and.config_alter_ICs_for_pbcs) then
+
+            if (config_pbc_alteration_type.eq.'partial_cell') then
+
+               write (stdoutUnit,'(a)') ' Altering bottomDepth to avoid very thin cells.'
+               write (stdoutUnit,'(a)') ' Altering layerThickness and tracer initial conditions to conform with partial bottom cells.'
+
+               allocate(minBottomDepth(nVertLevels),minBottomDepthMid(nVertLevels),zMidZLevel(nVertLevels))
+
+               ! min_pbc_fraction restricts pbcs from being too small.
+               ! A typical value is 10%, so pbcs must occupy at least 10% of the cell thickness.
+               ! If min_pbc_fraction = 0.0, bottomDepth gives the actual depth for that cell.
+               ! If min_pbc_fraction = 1.0, bottomDepth reverts to discrete z-level depths, same 
+               !    as partial_bottom_cells = .false.
+
+               minBottomDepth(1) = (1.0-config_min_pbc_fraction)*refBottomDepth(1)
+               minBottomDepthMid(1) = 0.5*(minBottomDepth(1) + refBottomDepthTopOfCell(1))
+               zMidZLevel(1) = - 0.5*(refBottomDepth(1) + refBottomDepthTopOfCell(1))
+               do k=2,nVertLevels
+                  minBottomDepth(k) = refBottomDepth(k) - (1.0-config_min_pbc_fraction)*(refBottomDepth(k) - refBottomDepth(k-1))
+                  minBottomDepthMid(k) = 0.5*(minBottomDepth(k) + refBottomDepthTopOfCell(k))
+                  zMidZLevel(k) = - 0.5*(refBottomDepth(k) + refBottomDepthTopOfCell(k))
+               enddo
+
+               do iCell=1,nCells
+
+                  ! Change value of maxLevelCell for partial bottom cells
+                  k = maxLevelCell(iCell)
+                  if (bottomDepth(iCell).lt.minBottomDepthMid(k)) then
+                     ! Round up to cell above
+                     maxLevelCell(iCell) = maxLevelCell(iCell) - 1
+                     bottomDepth(iCell) = refBottomDepth(maxLevelCell(iCell))
+                  elseif (bottomDepth(iCell).lt.minBottomDepth(k)) then
+                     ! Round down cell to the min_pbc_fraction.
+                     bottomDepth(iCell) = minBottomDepth(k)
+                  endif
+                  ! reset k to new value of maxLevelCell
+                  k = maxLevelCell(iCell)
+
+                  ! Alter thickness of bottom level to account for PBC
+                  layerThickness(k,iCell) = bottomDepth(iCell) - refBottomDepthTopOfCell(k) 
+
+                  ! Linearly interpolate the initial T&S for new location of bottom cell for PBCs
+                  zMidPBC = -0.5*(bottomDepth(iCell) + refBottomDepthTopOfCell(k))
+                  km1 = max(k-1,1)
+                  do iTracer=1,num_tracers
+                     tracers(iTracer,k,iCell) = tracers(iTracer,k,iCell) &
+                        + (tracers(iTracer,km1,iCell) - tracers(iTracer,k,iCell)) &
+                         /(zMidZLevel(km1)-zMidZLevel(k)+1.0e-16) &
+                         *(zMidPBC - zMidZLevel(k))
+                  enddo
+
+               enddo  
+
+               deallocate(minBottomDepth,zMidZLevel)
+
+            elseif (config_pbc_alteration_type.eq.'full_cell') then
+
+               do iCell = 1,nCells
+                  bottomDepth(iCell) = refBottomDepth(maxLevelCell(iCell))
+               enddo
+
+            else
+
+                write (stderrUnit,*) ' Incorrect choice of config_pbc_alteration_type.'
+                call mpas_dmpar_abort(dminfo)
+
+            endif
+
+         endif ! .not.config_do_restart
 
          if (.not.config_do_restart) then
 
-          if (config_alter_ICs_for_pbcs.eq.'zlevel_pbcs_on') then
+            ! Layer thickness when the ocean is at rest, i.e. without SSH or internal perturbations.
+            ! This is applied only from the initial condition
+            if (config_set_restingThickness_to_IC) then
+                restingThickness = layerThickness
+            endif
 
-            write (0,'(a)') ' Altering bottomDepth to avoid very thin cells.'
-            write (0,'(a)') ' Altering layerThickness and tracer initial conditions to conform with partial bottom cells.'
-
-            allocate(minBottomDepth(nVertLevels),minBottomDepthMid(nVertLevels),zMidZLevel(nVertLevels))
-
-            ! min_pbc_fraction restricts pbcs from being too small.
-            ! A typical value is 10%, so pbcs must occupy at least 10% of the cell thickness.
-            ! If min_pbc_fraction = 0.0, bottomDepth gives the actual depth for that cell.
-            ! If min_pbc_fraction = 1.0, bottomDepth reverts to discrete z-level depths, same 
-            !    as partial_bottom_cells = .false.
-
-            minBottomDepth(1) = (1.0-config_min_pbc_fraction)*refBottomDepth(1)
-            minBottomDepthMid(1) = 0.5*(minBottomDepth(1) + refBottomDepthTopOfCell(1))
-            zMidZLevel(1) = - 0.5*(refBottomDepth(1) + refBottomDepthTopOfCell(1))
-            do k=2,nVertLevels
-               minBottomDepth(k) = refBottomDepth(k) - (1.0-config_min_pbc_fraction)*(refBottomDepth(k) - refBottomDepth(k-1))
-               minBottomDepthMid(k) = 0.5*(minBottomDepth(k) + refBottomDepthTopOfCell(k))
-               zMidZLevel(k) = - 0.5*(refBottomDepth(k) + refBottomDepthTopOfCell(k))
-            enddo
-
-            do iCell=1,nCells
-               k = maxLevelCell(iCell)
-
-                if (bottomDepth(iCell).lt.minBottomDepthMid(k)) then
-                   ! Round up to cell above
-                   maxLevelCell(iCell) = maxLevelCell(iCell) - 1
-                   bottomDepth(iCell) = refBottomDepth(maxLevelCell(iCell))
-                elseif (bottomDepth(iCell).lt.minBottomDepth(k)) then
-                   ! Round down cell to the min_pbc_fraction.
-                   bottomDepth(iCell) = minBottomDepth(k)
-                endif
-                k = maxLevelCell(iCell)
-
-               ! Alter thickness of bottom level to account for PBC
-               layerThickness(k,iCell) = bottomDepth(iCell) - refBottomDepthTopOfCell(k) 
-
-               ! Linearly interpolate the initial T&S for new location of bottom cell for PBCs
-               zMidPBC = -0.5*(bottomDepth(iCell) + refBottomDepthTopOfCell(k))
-
-               do iTracer=1,num_tracers
-                  tracers(iTracer,k,iCell) = tracers(iTracer,k,iCell) &
-                     + (tracers(iTracer,k-1,iCell) - tracers(iTracer,k,iCell)) &
-                      /(zMidZLevel(k-1)-zMidZLevel(k)) &
-                      *(zMidPBC - zMidZLevel(k))
-               enddo
-
-            enddo  
-
-            deallocate(minBottomDepth,zMidZLevel)
-
-          elseif (config_alter_ICs_for_pbcs.eq.'zlevel_pbcs_off') then
-
-            do iCell = 1,nCells
-               bottomDepth(iCell) = refBottomDepth(maxLevelCell(iCell))
-            enddo
-
-          elseif (config_alter_ICs_for_pbcs.eq.'off') then
-            ! No action taken.  This is for isopycnal or sigma coordinates,
-            !  or if ICs were already altered upon start-up.
-
-          else
-
-             write (0,*) ' Incorrect choice of config_alter_ICs_for_pbcs.'
-             call mpas_dmpar_abort(dminfo)
-
-          endif
-         endif
+         endif ! .not.config_do_restart.and.config_alter_ICs_for_pbcs
 
          if (config_check_ssh_consistency) then
             consistentSSH = .true.
@@ -798,29 +852,28 @@ module mpas_core
                ! Check if abs(ssh)>2m.  If so, print warning.
                if (abs(sum(layerThickness(1:maxLevelCell(iCell),iCell))-bottomDepth(iCell))>2.0) then
                   consistentSSH = .false.
-#ifdef MPAS_DEBUG
-                  write (0,'(a)') ' Warning: abs(sum(h)-bottomDepth)>2m.  Most likely, initial layerThickness does not match bottomDepth.'
-                  write (0,*) ' iCell, K=maxLevelCell(iCell), bottomDepth(iCell),sum(h),bottomDepth: ', &
+                  write (stderrUnit,'(a)') ' Warning: abs(sum(h)-bottomDepth)>2m.  Most likely, initial layerThickness does not match bottomDepth.'
+                  write (stderrUnit,*) ' iCell, K=maxLevelCell(iCell), bottomDepth(iCell),sum(h),bottomDepth: ', &
                                 iCell, maxLevelCell(iCell), bottomDepth(iCell),sum(layerThickness(1:maxLevelCell(iCell),iCell)),bottomDepth(iCell), &
                                 layerThickness(maxLevelCell(iCell),iCell)
-#endif                            
                endif
             enddo
 
             if (.not. consistentSSH) then
-               write(0,*) 'Warning: SSH is not consistent. Most likely, initial layerThickness does not match bottomDepth.'
+               write(stderrUnit,*) 'Warning: SSH is not consistent. Most likely, initial layerThickness does not match bottomDepth.'
             end if
-         endif
+
+         endif ! config_check_ssh_consistency
 
          if (config_check_zlevel_consistency) then
             do iCell = 1,nCells
-               ! Check that bottomDepth and maxLevelCell match.  Some older grids do not have the bottomDepth variable.
+               ! Check that bottomDepth and maxLevelCell match.  Some older meshs do not have the bottomDepth variable.
                if (bottomDepth(iCell) > refBottomDepth(maxLevelCell(iCell)).or. &
                    bottomDepth(iCell) < refBottomDepthTopOfCell(maxLevelCell(iCell))) then
-                  write (0,'(a)') ' fatal error: bottomDepth and maxLevelCell do not match:'
-                  write (0,'(a,2i5,10f10.2)') ' iCell, maxLevelCell(iCell), bottomDepth(iCell): ', &
+                  write (stderrUnit,'(a)') ' fatal error: bottomDepth and maxLevelCell do not match:'
+                  write (stderrUnit,'(a,2i5,10f10.2)') ' iCell, maxLevelCell(iCell), bottomDepth(iCell): ', &
                                 iCell, maxLevelCell(iCell), bottomDepth(iCell)
-                  write (0,'(a,10f10.2)') ' refBottomDepth(maxLevelCell(iCell)), refBottomDepthTopOfCell(maxLevelCell(iCell)): ', &
+                  write (stderrUnit,'(a,10f10.2)') ' refBottomDepth(maxLevelCell(iCell)), refBottomDepthTopOfCell(maxLevelCell(iCell)): ', &
                                 refBottomDepth(maxLevelCell(iCell)), refBottomDepthTopOfCell(maxLevelCell(iCell))
                   call mpas_dmpar_abort(dminfo)
                endif
@@ -853,7 +906,7 @@ module mpas_core
       real (kind=RKIND), dimension(:,:), pointer :: layerThickness
       integer :: nVertLevels
 
-      ! Initialize z-level grid variables from h, read in from input file.
+      ! Initialize z-level mesh variables from h, read in from input file.
       block => domain % blocklist
       do while (associated(block))
 
@@ -939,7 +992,7 @@ module mpas_core
    end subroutine ocn_init_split_timestep!}}}
 
 subroutine ocn_compute_max_level(domain)!{{{
-! Initialize maxLevel and bouncary grid variables.
+! Initialize maxLevel and boundary mesh variables.
 
    use mpas_grid_types
    use mpas_configure
@@ -961,7 +1014,7 @@ subroutine ocn_compute_max_level(domain)!{{{
       cellsOnEdge, cellsOnVertex, boundaryEdge, boundaryCell, &
       boundaryVertex, verticesOnEdge, edgeMask, cellMask, vertexMask
 
-   ! Initialize z-level grid variables from h, read in from input file.
+   ! Initialize z-level mesh variables from h, read in from input file.
    block => domain % blocklist
    do while (associated(block))
 
@@ -985,13 +1038,6 @@ subroutine ocn_compute_max_level(domain)!{{{
       nVertices   = block % mesh % nVertices
       nVertLevels = block % mesh % nVertLevels
       vertexDegree = block % mesh % vertexDegree
-
-      ! for z-grids, maxLevelCell should be in input state
-      ! Isopycnal grid uses all vertical cells
-      if (config_vert_coord_movement.eq.'isopycnal') then
-         maxLevelCell(1:nCells) = nVertLevels
-      endif
-      maxLevelCell(nCells+1) = 0
 
       ! maxLevelEdgeTop is the minimum (shallowest) of the surrounding cells
       do iEdge=1,nEdges
@@ -1043,25 +1089,33 @@ subroutine ocn_compute_max_level(domain)!{{{
       ! Find cells and vertices that have an edge on the boundary
       !
       boundaryCell(:,1:nCells+1) = 0
-      cellMask(:,1:nCells+1) = 1
+      cellMask(:,1:nCells+1) = 0
       boundaryVertex(:,1:nVertices+1) = 0
-      vertexMask(:,1:nVertices+1) = 1
+      vertexMask(:,1:nVertices+1) = 0
       do iEdge=1,nEdges
          do k=1,nVertLevels
             if (boundaryEdge(k,iEdge).eq.1) then
                boundaryCell(k,cellsOnEdge(1,iEdge)) = 1
                boundaryCell(k,cellsOnEdge(2,iEdge)) = 1
-               if(maxLevelCell(cellsOnEdge(1,iEdge)) > k) then
-                   cellMask(k, cellsOnEdge(1,iEdge)) = 0
-               end if
-               if(maxLevelCell(cellsOnEdge(2,iEdge)) > k) then
-                   cellMask(k, cellsOnEdge(2,iEdge)) = 0
-               end if
                boundaryVertex(k,verticesOnEdge(1,iEdge)) = 1
                boundaryVertex(k,verticesOnEdge(2,iEdge)) = 1
-               vertexMask(k,verticesOnEdge(1,iEdge)) = 0
-               vertexMask(k,verticesOnEdge(2,iEdge)) = 0
             endif
+         end do
+      end do
+
+      do iCell = 1, nCells
+         do k = 1, nVertLevels
+            if ( maxLevelCell(iCell) >= k ) then
+               cellMask(k, iCell) = 1
+            end if
+         end do
+      end do
+
+      do iVertex = 1, nVertices
+         do k = 1, nVertLevels
+            if ( maxLevelVertexBot(iVertex) >= k ) then
+               vertexMask(k, iVertex) = 1
+            end if
          end do
       end do
 
@@ -1186,6 +1240,33 @@ end subroutine ocn_compute_max_level!}}}
        end do
 
    end subroutine ocn_setup_sign_and_index_fields!}}}
+
+
+!***********************************************************************
+!
+!  routine mpas_core_setup_packages
+!
+!> \brief   Pacakge setup routine
+!> \author  Doug Jacobsen
+!> \date    September 2011
+!> \details 
+!>  This routine is intended to correctly configure the packages for this MPAS
+!>   core. It can use any Fortran logic to properly configure packages, and it
+!>   can also make use of any namelist options. All variables in the model are
+!>   *not* allocated until after this routine is called.
+!
+!-----------------------------------------------------------------------
+   subroutine mpas_core_setup_packages(ierr)!{{{
+
+      use mpas_packages
+
+      implicit none
+
+      integer, intent(out) :: ierr
+
+      ierr = 0
+
+   end subroutine mpas_core_setup_packages!}}}
 
 end module mpas_core
 

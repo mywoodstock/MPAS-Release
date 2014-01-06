@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<registry model="mpas" core="atmosphere" version="1.5">
+<registry model="mpas" core="atmosphere" version="2.0">
 
 <!-- **************************************************************************************** -->
 <!-- ************************************** Dimensions ************************************** -->
@@ -82,6 +82,7 @@
                 <nml_option name="config_output_interval"            type="character"     default_value="06:00:00"/>
                 <nml_option name="config_restart_name"               type="character"     default_value="restart.nc"/>
                 <nml_option name="config_restart_interval"           type="character"     default_value="none"/>
+                <nml_option name="config_restart_timestamp_name"     type="character"     default_value="restart_timestamp"/>
                 <nml_option name="config_sfc_update_name"            type="character"     default_value="sfc_update.nc"/>
                 <nml_option name="config_sfc_update_interval"        type="character"     default_value="none"/>
                 <nml_option name="config_hifreq_output_interval"     type="character"     default_value="none"/>
@@ -203,10 +204,6 @@
                 <var name="east"                      type="real"     dimensions="R3 nCells"                   streams="r"/>
                 <var name="north"                     type="real"     dimensions="R3 nCells"                   streams="r"/>
 
-                <!-- Arrays needed only in the CAM LW and SW radiation codes: Ozone -->
-                <var name="pin"                       type="real"     dimensions="nOznLevels nCells"/>
-                <var name="ozmixm"                    type="real"     dimensions="nMonths nOznLevels nCells"/>
-
                 <!-- Arrays needed only in the CAM LW and SW radiation codes: Aerosols -->
                 <var name="m_hybi"                    type="real"     dimensions="nAerLevels nCells"/>
         </var_struct>
@@ -228,8 +225,6 @@
                         <var name="qi"      array_group="moist"       streams="iro"/>
                         <var name="qs"      array_group="moist"       streams="iro"/>
                         <var name="qg"      array_group="moist"       streams="iro"/>
-                        <var name="qnr"     array_group="number"      streams="iro"/>
-                        <var name="qni"     array_group="number"      streams="iro"/>
                 </var_array>
 
                 <var_array name="aerosols" type="real" dimensions="nAerLevels nCells Time">
@@ -330,21 +325,31 @@
 
                 <var name="temperature_200hPa"     type="real"     dimensions="nCells Time"                 streams="o"/>
                 <var name="temperature_500hPa"     type="real"     dimensions="nCells Time"                 streams="o"/>
+                <var name="temperature_700hPa"     type="real"     dimensions="nCells Time"                 streams="o"/>
                 <var name="temperature_850hPa"     type="real"     dimensions="nCells Time"                 streams="o"/>
+                <var name="relhum_200hPa"          type="real"     dimensions="nCells Time"                 streams="o"/>
+                <var name="relhum_500hPa"          type="real"     dimensions="nCells Time"                 streams="o"/>
+                <var name="relhum_700hPa"          type="real"     dimensions="nCells Time"                 streams="o"/>
+                <var name="relhum_850hPa"          type="real"     dimensions="nCells Time"                 streams="o"/>
                 <var name="height_200hPa"          type="real"     dimensions="nCells Time"                 streams="o"/>
                 <var name="height_500hPa"          type="real"     dimensions="nCells Time"                 streams="o"/>
+                <var name="height_700hPa"          type="real"     dimensions="nCells Time"                 streams="o"/>
                 <var name="height_850hPa"          type="real"     dimensions="nCells Time"                 streams="o"/>
                 <var name="uzonal_200hPa"          type="real"     dimensions="nCells Time"                 streams="o"/>
                 <var name="uzonal_500hPa"          type="real"     dimensions="nCells Time"                 streams="o"/>
+                <var name="uzonal_700hPa"          type="real"     dimensions="nCells Time"                 streams="o"/>
                 <var name="uzonal_850hPa"          type="real"     dimensions="nCells Time"                 streams="o"/>
                 <var name="umeridional_200hPa"     type="real"     dimensions="nCells Time"                 streams="o"/>
                 <var name="umeridional_500hPa"     type="real"     dimensions="nCells Time"                 streams="o"/>
+                <var name="umeridional_700hPa"     type="real"     dimensions="nCells Time"                 streams="o"/>
                 <var name="umeridional_850hPa"     type="real"     dimensions="nCells Time"                 streams="o"/>
                 <var name="w_200hPa"               type="real"     dimensions="nCells Time"                 streams="o"/>
                 <var name="w_500hPa"               type="real"     dimensions="nCells Time"                 streams="o"/>
+                <var name="w_700hPa"               type="real"     dimensions="nCells Time"                 streams="o"/>
                 <var name="w_850hPa"               type="real"     dimensions="nCells Time"                 streams="o"/>
                 <var name="vorticity_200hPa"       type="real"     dimensions="nVertices Time"              streams="o"/>
                 <var name="vorticity_500hPa"       type="real"     dimensions="nVertices Time"              streams="o"/>
+                <var name="vorticity_700hPa"       type="real"     dimensions="nVertices Time"              streams="o"/>
                 <var name="vorticity_850hPa"       type="real"     dimensions="nVertices Time"              streams="o"/>
         </var_struct>
 
@@ -369,8 +374,6 @@
                         <var name="tend_qi"    name_in_code="qi"        array_group="moist"       streams="o"/>
                         <var name="tend_qs"    name_in_code="qs"        array_group="moist"       streams="o"/>
                         <var name="tend_qg"    name_in_code="qg"        array_group="moist"       streams="o"/>
-                        <var name="tend_qnr"   name_in_code="qnr"       array_group="number"      streams="o"/>
-                        <var name="tend_qni"   name_in_code="qni"       array_group="number"      streams="o"/>
                 </var_array>
         </var_struct>
 
@@ -403,6 +406,7 @@
                 <nml_option name="config_sst_update"                 type="logical"       default_value="false"/>
                 <nml_option name="config_sstdiurn_update"            type="logical"       default_value="false"/>
                 <nml_option name="config_deepsoiltemp_update"        type="logical"       default_value="false"/>
+                <nml_option name="config_o3climatology"              type="logical"       default_value="false"/>
 
                 <nml_option name="config_n_microp"                   type="integer"       default_value="1"/>
 
@@ -430,6 +434,8 @@
         </nml_record>
 
         <var_struct name="diag_physics" time_levs="1">
+
+                <var name="dcEdge_m"      type="real"     dimensions="nCells"                      streams="ro"/>
 
                 <!-- ================================================================================================= -->
                 <!-- ... ARRAYS AND VARIABLES FOR UPDATING THE DEEP SOIL TEMPERATURE:                                  -->
@@ -477,6 +483,7 @@
                 <var name="graupelnc"     type="real"     dimensions="nCells Time"                 streams="ro"/>
 
                 <var name="precipw"       type="real"     dimensions="nCells Time"                 streams="o"/>
+                <var name="relhum"        type="real"     dimensions="nVertLevels nCells Time"     streams="o"/>
 
                 <!-- ================================================================================================== -->
                 <!-- ... PARAMETERIZATION OF CONVECTION:                                                                -->
@@ -784,8 +791,17 @@
 
 
                 <!-- ================================================================================================== -->
+                <!-- ... ADDITIONAL OZONE ARRAYS NEEDED ONLY IN THE LW AND SW RADIATION CODES:                          -->
+                <!-- ================================================================================================== -->
+
+                <var name="o3clim"        type="real"     dimensions="nOznLevels nCells Time"      streams="ro"/>
+                <var name="o3vmr "        type="real"     dimensions="nVertLevels nCells Time"     streams="ro"/>
+
+
+                <!-- ================================================================================================== -->
                 <!-- ... PARAMERIZATION OF CLOUDINESS:                                                                  -->
                 <!-- ================================================================================================== -->
+
                 <var name="cldfrac"       type="real"     dimensions="nVertLevels nCells Time"     streams="o"/>
 
 
@@ -903,6 +919,12 @@
 
                 <var name="rthratensw"  type="real"     dimensions="nVertLevels nCells Time"     streams="ro"/>
                 <var name="rthratenlw"  type="real"     dimensions="nVertLevels nCells Time"     streams="ro"/>
+        </var_struct>
+
+        <var_struct name="atm_input" time_levs="0">
+                <!-- Monthly mean ozone climatology used in the CAM and RRTMG radiation codes -->
+                <var name="pin"         type="real"     dimensions="nOznLevels"                  streams="ro"/>
+                <var name="ozmixm"      type="real"     dimensions="nMonths nOznLevels nCells"   streams="ro"/>
         </var_struct>
 
         <var_struct name="sfc_input" time_levs="0">

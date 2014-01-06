@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -21,6 +21,7 @@ module mpas_dmpar
    use mpas_grid_types
    use mpas_sort
    use mpas_hash
+   use mpas_io_units
 
 #ifdef _MPI
 include 'mpif.h'
@@ -135,7 +136,7 @@ include 'mpif.h'
       dminfo % nprocs = mpi_size
       dminfo % my_proc_id = mpi_rank
 
-      write(0,'(a,i5,a,i5,a)') 'task ', mpi_rank, ' of ', mpi_size, &
+      write(stderrUnit,'(a,i5,a,i5,a)') 'task ', mpi_rank, ' of ', mpi_size, &
         ' is running'
 
 #ifndef MPAS_CESM
@@ -223,11 +224,11 @@ include 'mpif.h'
 #ifdef _MPI
       integer :: mpi_ierr, mpi_errcode
 
-      write(0,*) trim(mesg)
+      write(stderrUnit,*) trim(mesg)
       call MPI_Abort(MPI_COMM_WORLD, mpi_errcode, mpi_ierr)
 #endif
 
-      write(0,*) trim(mesg)
+      write(stderrUnit,*) trim(mesg)
       stop
 
    end subroutine mpas_dmpar_global_abort!}}}
@@ -333,6 +334,57 @@ include 'mpif.h'
 #endif
 
    end subroutine mpas_dmpar_bcast_reals!}}}
+
+!-----------------------------------------------------------------------
+!  routine mpas_dmpar_bcast_double
+!
+!> \brief MPAS dmpar broadcast double routine.
+!> \author Michael Duda
+!> \date   11/04/13
+!> \details
+!>  This routine broadcasts a double to all processors in the communicator.
+!
+!-----------------------------------------------------------------------
+   subroutine mpas_dmpar_bcast_double(dminfo, r)!{{{
+
+      implicit none
+
+      type (dm_info), intent(in) :: dminfo !< Input: Domain information
+      double precision, intent(inout) :: r !< Input/Output: Double to be broadcast
+
+#ifdef _MPI
+      integer :: mpi_ierr
+
+      call MPI_Bcast(r, 1, MPI_DOUBLE_PRECISION, IO_NODE, dminfo % comm, mpi_ierr)
+#endif
+
+   end subroutine mpas_dmpar_bcast_double!}}}
+
+!-----------------------------------------------------------------------
+!  routine mpas_dmpar_bcast_doubles
+!
+!> \brief MPAS dmpar broadcast doubles routine.
+!> \author Michael Duda
+!> \date   11/04/13
+!> \details
+!>  This routine broadcasts an array of doubles to all processors in the communicator.
+!
+!-----------------------------------------------------------------------
+   subroutine mpas_dmpar_bcast_doubles(dminfo, n, rarray)!{{{
+
+      implicit none
+
+      type (dm_info), intent(in) :: dminfo !< Input: Domain information
+      integer, intent(in) :: n !< Input: Length of array
+      double precision, dimension(n), intent(inout) :: rarray !< Input/Output: Array of doubles to be broadcast
+
+#ifdef _MPI
+      integer :: mpi_ierr
+
+      call MPI_Bcast(rarray, n, MPI_DOUBLE_PRECISION, IO_NODE, dminfo % comm, mpi_ierr)
+#endif
+
+   end subroutine mpas_dmpar_bcast_doubles!}}}
 
 !-----------------------------------------------------------------------
 !  routine mpas_dmpar_bcast_logical
@@ -858,8 +910,8 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       type (dm_info), pointer :: dminfo
 
       integer :: i, j, k, kk, iBlock
-      integer :: totalSize, nMesgRecv, nMesgSend, recvNeighbor, sendNeighbor, currentProc, offset
-      integer :: totalSent, totalRecv
+      integer :: totalSize, nMesgRecv, nMesgSend, recvNeighbor, sendNeighbor, currentProc
+      integer :: totalSent
       integer, allocatable, dimension(:) :: numToSend, numToRecv
       integer, allocatable, dimension(:) :: ownedList, ownedListIndex, ownedBlock, neededList, neededListIndex, neededBlock
       integer, allocatable, dimension(:) :: offsetList, ownedLimitList
@@ -1394,6 +1446,213 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 
    end subroutine mpas_dmpar_get_exch_list!}}}
 
+
+
+!***********************************************************************
+!
+!  routine mpas_dmpar_build_comm_lists
+!
+!> \brief   Builds send and receive comm lists templates for populating with buffer data
+!> \author  Matt Hoffman
+!> \date    8 October 2013
+!> \details
+!>  This routine builds the templates for send and receive communication lists
+!>  that can subsequently be populated with buffer data.  Specifically, it
+!>  creates all elements of send and receive linked lists of type
+!>  mpas_communication_list and fills in the procID and nlist attributes.
+!>  Other dmpar routines can then add data to the rbuffer and/or ibuffer arrays
+!>  of these send/receive lists.  This initial step is needed by all of the
+!>  various halo-exchange subroutines, so encapsulating these
+!>  initial steps here allows significant code-reuse and shortening of those
+!>  subroutines.  This implementation avoids the use of 'field' because there are
+!>  more than 10 different field types, which prevents the ability to generalize
+!>  this routine.  However, since we need to traverse blocks, the subroutine
+!>  required adding next/prev pointers to the mpas_multihalo_exchange_list type
+!>  (since we can't rely on the field to traverse blocks).  This subroutine
+!>  has been made public, so cores have access to it.
+!
+!-----------------------------------------------------------------------
+   subroutine mpas_dmpar_build_comm_lists(sendExchList, recvExchList, haloLayers, dimsizes, sendCommList, recvCommList)
+
+      !-----------------------------------------------------------------
+      ! input variables
+      !-----------------------------------------------------------------
+      type (mpas_multihalo_exchange_list), pointer, intent(in) :: &
+         sendExchList  !< Input: the send exchange list from the variable for which communication lists are desired
+      type (mpas_multihalo_exchange_list), pointer, intent(in) :: &
+         recvExchList  !< Input: the receive exchange list from the variable for which communication lists are desired
+      integer, dimension(:), pointer :: haloLayers !< Input: list of halo layers to be communicated.
+      integer, dimension(:) :: dimSizes !< array of sizes of the dimensions of the variable being communicated
+
+      !-----------------------------------------------------------------
+      ! input/output variables
+      !-----------------------------------------------------------------
+      type (mpas_communication_list), pointer, intent(inout) :: &
+         sendCommList  !< Input/Output: the send communication list, unallocated on input, partially filled out on output
+      type (mpas_communication_list), pointer, intent(inout) :: &
+         recvCommList  !< Input/Output: the receive communication list, unallocated on input, partially filled out on output
+
+      !-----------------------------------------------------------------
+      ! output variables
+      !-----------------------------------------------------------------
+
+      !-----------------------------------------------------------------
+      ! local variables
+      !-----------------------------------------------------------------
+      type (mpas_multihalo_exchange_list), pointer :: sendListCursor, recvListCursor
+      type (mpas_exchange_list), pointer :: exchListPtr
+      type (mpas_communication_list), pointer :: commListPtr, commListPtr2
+      logical :: comm_list_found
+      integer :: nAdded, bufferOffset
+      integer :: iHalo
+      integer :: nHaloLayers
+      integer :: iDimen
+      integer :: dimSizeProduct  ! the product of the size of all dimensions
+
+
+      ! We only need the product of all dimension sizes (except the last), so calculate that now
+      dimSizeProduct = 1
+      do iDimen = 1, size(dimsizes) - 1
+         dimSizeProduct = dimSizeProduct * dimsizes(iDimen)
+      enddo
+
+      ! Get size of haloLayers array
+      nHaloLayers = size(haloLayers)
+
+      ! Allocate communication lists, and setup dead header node.
+      allocate(sendCommList)
+      nullify(sendCommList % next)
+      sendCommList % procID = -1
+      sendCommList % nList = 0
+
+      allocate(recvCommList)
+      nullify(recvCommList % next)
+      recvCommList % procID = -1
+      recvCommList % nList = 0
+
+
+      ! Determine size of buffers for communication lists
+      sendListCursor => sendExchList
+      recvListCursor => recvExchList  ! We need to traverse the send and recv exchange lists together in this loop
+      do while(associated(sendListCursor))
+
+        ! Need to aggregate across halo layers
+        do iHalo = 1, nHaloLayers
+
+          ! Determine size from send lists & build the send list
+          exchListPtr => sendListCursor % halos(haloLayers(iHalo)) % exchList
+          do while(associated(exchListPtr))  ! loop through items representing different endPoint Id's
+            comm_list_found = .false.
+
+            commListPtr => sendCommList
+            do while(associated(commListPtr))  ! Loop through items representing different procs being sent to
+              if(commListPtr % procID == exchListPtr % endPointId) then
+                comm_list_found = .true.
+                commListPtr % nList = commListPtr % nList + exchListPtr % nList * dimSizeProduct
+                exit
+              end if
+
+              commListPtr => commListPtr % next
+            end do
+
+            if(.not. comm_list_found) then  ! Add an item to the sendCommList for this endpoint
+              commListPtr => sendCommList
+              commListPtr2 => commListPtr % next
+              do while(associated(commListPtr2))
+                commListPtr => commListPtr % next
+                commListPtr2 => commListPtr % next
+              end do
+
+              allocate(commListPtr % next)
+              commListPtr => commListPtr % next
+              nullify(commListPtr % next)
+              commListPtr % procID = exchListPtr % endPointID
+              commListPtr % nList = exchListPtr % nList * dimSizeProduct
+            end if
+
+            exchListPtr => exchListPtr % next
+          end do
+
+          ! Setup recv lists
+          exchListPtr => recvListCursor % halos(haloLayers(iHalo)) % exchList
+          do while(associated(exchListPtr))
+            comm_list_found = .false.
+
+            commListPtr => recvCommList
+            do while(associated(commListPtr))
+              if(commListPtr % procID == exchListPtr % endPointId) then
+                comm_list_found = .true.
+                commListPtr % nList = commListPtr % nList + exchListPtr % nList * dimSizeProduct
+                exit
+              end if
+
+              commListPtr => commListPtr % next
+            end do
+
+            if(.not. comm_list_found) then
+              commListPtr => recvCommList
+              commListPtr2 => commListPtr % next
+              do while(associated(commListPtr2))
+                commListPtr => commListPtr % next
+                commListPtr2 => commListPtr % next
+              end do
+
+              allocate(commListPtr % next)
+              commListPtr => commListPtr % next
+              nullify(commListPtr % next)
+              commListPtr % procID = exchListPtr % endPointID
+              commListPtr % nList = exchListPtr % nList * dimSizeProduct
+            end if
+
+            exchListPtr => exchListPtr % next
+          end do
+        end do   ! halo loop
+
+        sendListCursor => sendListCursor % next  ! Advance to next block (only happens if more than 1 block per proc)
+        recvListCursor => recvListCursor % next  ! Advance to next block (only happens if more than 1 block per proc)
+        ! We need to traverse the send and recv exchange lists together in this loop (since we cannot traverse the field itself)
+      end do  ! sendListCursor (block loop)
+
+      ! Remove the dead head pointer on send and recv list
+      commListPtr => sendCommList
+      sendCommList => sendCommList % next
+      deallocate(commListPtr)
+
+      commListPtr => recvCommList
+      recvCommList => recvCommList % next
+      deallocate(commListPtr)
+
+      ! Determine size of receive lists
+      commListPtr => recvCommList
+      do while(associated(commListPtr))
+        bufferOffset = 0
+        do iHalo = 1, nHaloLayers
+          nAdded = 0
+
+          recvListCursor => recvExchList
+          do while(associated(recvListCursor))
+            exchListPtr => recvListCursor % halos(haloLayers(iHalo)) % exchList
+            do while(associated(exchListPtr))
+              if(exchListPtr % endPointID == commListPtr % procID) then
+                nAdded = max(nAdded, maxval(exchListPtr % srcList) * dimSizeProduct)
+              end if
+              exchListPtr => exchListPtr % next
+            end do
+
+            recvListCursor => recvListCursor % next
+          end do
+          bufferOffset = bufferOffset + nAdded
+        end do
+        commListPtr % nList = bufferOffset
+
+        commListPtr => commListPtr % next
+      end do  ! commListPtr
+
+   !--------------------------------------------------------------------
+   end subroutine mpas_dmpar_build_comm_lists
+
+
+
 !-----------------------------------------------------------------------
 !  routine mpas_dmpar_alltoall_field1d_integer
 !
@@ -1402,7 +1661,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the all-to-all communication of an input field into an output field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_alltoall_field1d_integer(fieldIn, fieldout, haloLayersIn)!{{{
@@ -1414,13 +1673,12 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      integer, dimension(:), pointer, optional :: haloLayersIn !< Input: Halo layers to communicated. Defaults to all.
 
      type (field1dInteger), pointer :: fieldInPtr, fieldOutPtr
-     type (mpas_exchange_list), pointer :: exchListPtr, exchListPtr2
+     type (mpas_exchange_list), pointer :: exchListPtr
      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
      type (dm_info), pointer :: dminfo
 
      logical :: comm_list_found
 
-     integer :: lastPackedIdx, lastUnpackedIdx, nPacked, nUnpacked
      integer :: nAdded, bufferOffset
      integer :: mpi_ierr
      integer :: iHalo, iBuffer, i
@@ -1447,7 +1705,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      nullify(sendList)
      nullify(recvList)
 
-     ! Setup recieve lists.
+     ! Setup receive lists.
      do iHalo = 1, nHaloLayers
        fieldOutPtr => fieldOut
        do while(associated(fieldOutPtr))
@@ -1521,7 +1779,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
        commListPtr => commListPtr % next
      end do
 
-     ! Allocate buffers for recieves, and initiate mpi_irecv calls.
+     ! Allocate buffers for receives, and initiate mpi_irecv calls.
      commListPtr => recvList
      do while(associated(commListPtr))
        allocate(commListPtr % ibuffer(commListPtr % nList))
@@ -1693,7 +1951,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the all-to-all communication of an input field into an output field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_alltoall_field2d_integer(fieldIn, fieldout, haloLayersIn)!{{{
@@ -1705,13 +1963,12 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      integer, dimension(:), pointer, optional :: haloLayersIn !< Input: List of halo layers to communicate. Defaults to all
 
      type (field2dInteger), pointer :: fieldInPtr, fieldOutPtr
-     type (mpas_exchange_list), pointer :: exchListPtr, exchListPtr2
+     type (mpas_exchange_list), pointer :: exchListPtr
      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
      type (dm_info), pointer :: dminfo
 
      logical :: comm_list_found
 
-     integer :: lastPackedIdx, lastUnpackedIdx, nPacked, nUnpacked
      integer :: nAdded, bufferOffset
      integer :: mpi_ierr
      integer :: iHalo, iBuffer, i, j
@@ -1738,7 +1995,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      nullify(sendList)
      nullify(recvList)
 
-     ! Setup recieve lists
+     ! Setup receive lists
      do iHalo = 1, nHaloLayers
        fieldOutPtr => fieldOut
        do while(associated(fieldOutPtr))
@@ -1811,7 +2068,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
        commListPtr => commListPtr % next
      end do
 
-     ! Allocate buffers for recieves, and initiate mpi_irecv calls.
+     ! Allocate buffers for receives, and initiate mpi_irecv calls.
      commListPtr => recvList
      do while(associated(commListPtr))
        allocate(commListPtr % ibuffer(commListPtr % nList))
@@ -1985,7 +2242,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the all-to-all communication of an input field into an output field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_alltoall_field3d_integer(fieldIn, fieldout, haloLayersIn)!{{{
@@ -1997,13 +2254,12 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      integer, dimension(:), pointer, optional :: haloLayersIn !< Input: List of halo layers to communicate. Defaults to all
 
      type (field3dInteger), pointer :: fieldInPtr, fieldOutPtr
-     type (mpas_exchange_list), pointer :: exchListPtr, exchListPtr2
+     type (mpas_exchange_list), pointer :: exchListPtr
      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
      type (dm_info), pointer :: dminfo
 
      logical :: comm_list_found
 
-     integer :: lastPackedIdx, lastUnpackedIdx, nPacked, nUnpacked
      integer :: nAdded, bufferOffset
      integer :: mpi_ierr
      integer :: iHalo, iBuffer, i, j, k
@@ -2030,7 +2286,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      nullify(sendList)
      nullify(recvList)
 
-     ! Setup recieve lists.
+     ! Setup receive lists.
      do iHalo = 1, nHaloLayers
        fieldOutPtr => fieldOut
        do while(associated(fieldOutPtr))
@@ -2105,7 +2361,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
        commListPtr => commListPtr % next
      end do
 
-     ! Allocate buffers for recieves, and initiate mpi_irecv calls.
+     ! Allocate buffers for receives, and initiate mpi_irecv calls.
      commListPtr => recvList
      do while(associated(commListPtr))
        allocate(commListPtr % ibuffer(commListPtr % nList))
@@ -2284,7 +2540,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the all-to-all communication of an input field into an output field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_alltoall_field1d_real(fieldIn, fieldout, haloLayersIn)!{{{
@@ -2296,13 +2552,12 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      integer, dimension(:), pointer, optional :: haloLayersIn !< Input: List of halo layers to communicate. Defaults to all
 
      type (field1dReal), pointer :: fieldInPtr, fieldOutPtr
-     type (mpas_exchange_list), pointer :: exchListPtr, exchListPtr2
+     type (mpas_exchange_list), pointer :: exchListPtr
      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
      type (dm_info), pointer :: dminfo
 
      logical :: comm_list_found
 
-     integer :: lastPackedIdx, lastUnpackedIdx, nPacked, nUnpacked
      integer :: nAdded, bufferOffset
      integer :: mpi_ierr
      integer :: iHalo, iBuffer, i
@@ -2329,7 +2584,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      nullify(sendList)
      nullify(recvList)
 
-     ! Setup recieve lists.
+     ! Setup receive lists.
      do iHalo = 1, nHaloLayers
        fieldOutPtr => fieldOut
        do while(associated(fieldOutPtr))
@@ -2402,7 +2657,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
        commListPtr => commListPtr % next
      end do
 
-     ! Allocate buffers for recieves, and initiate mpi_irecv calls.
+     ! Allocate buffers for receives, and initiate mpi_irecv calls.
      commListPtr => recvList
      do while(associated(commListPtr))
        allocate(commListPtr % rbuffer(commListPtr % nList))
@@ -2573,7 +2828,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the all-to-all communication of an input field into an output field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_alltoall_field2d_real(fieldIn, fieldout, haloLayersIn)!{{{
@@ -2585,13 +2840,12 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      integer, dimension(:), pointer, optional :: haloLayersIn !< Input: List of halo layers to communicate. Defaults to all
 
      type (field2dReal), pointer :: fieldInPtr, fieldOutPtr
-     type (mpas_exchange_list), pointer :: exchListPtr, exchListPtr2
+     type (mpas_exchange_list), pointer :: exchListPtr
      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
      type (dm_info), pointer :: dminfo
 
      logical :: comm_list_found
 
-     integer :: lastPackedIdx, lastUnpackedIdx, nPacked, nUnpacked
      integer :: nAdded, bufferOffset
      integer :: mpi_ierr
      integer :: iHalo, iBuffer, i, j
@@ -2618,7 +2872,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      nullify(sendList)
      nullify(recvList)
 
-     ! Setup recieve lists, and determine the size of their buffers.
+     ! Setup receive lists, and determine the size of their buffers.
      do iHalo = 1, nHaloLayers
        fieldOutPtr => fieldOut
        do while(associated(fieldOutPtr))
@@ -2691,7 +2945,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
        commListPtr => commListPtr % next
      end do
 
-     ! Allocate buffers for recieves, and initiate mpi_irecv calls.
+     ! Allocate buffers for receives, and initiate mpi_irecv calls.
      commListPtr => recvList
      do while(associated(commListPtr))
        allocate(commListPtr % rbuffer(commListPtr % nList))
@@ -2866,7 +3120,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the all-to-all communication of an input field into an output field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_alltoall_field3d_real(fieldIn, fieldout, haloLayersIn)!{{{
@@ -2878,13 +3132,12 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      integer, dimension(:), pointer, optional :: haloLayersIn !< Input: List of halo layers to communicate. Defaults to all
 
      type (field3dReal), pointer :: fieldInPtr, fieldOutPtr
-     type (mpas_exchange_list), pointer :: exchListPtr, exchListPtr2
+     type (mpas_exchange_list), pointer :: exchListPtr
      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
      type (dm_info), pointer :: dminfo
 
      logical :: comm_list_found
 
-     integer :: lastPackedIdx, lastUnpackedIdx, nPacked, nUnpacked
      integer :: nAdded, bufferOffset
      integer :: mpi_ierr
      integer :: iHalo, iBuffer, i, j, k
@@ -2911,7 +3164,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      nullify(sendList)
      nullify(recvList)
 
-     ! Setup recieve lists.
+     ! Setup receive lists.
      do iHalo = 1, nHaloLayers
        fieldOutPtr => fieldOut
        do while(associated(fieldOutPtr))
@@ -2988,7 +3241,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
        commListPtr => commListPtr % next
      end do
 
-     ! Allocate buffers for recieves, and initiate mpi_irecv calls.
+     ! Allocate buffers for receives, and initiate mpi_irecv calls.
      commListPtr => recvList
      do while(associated(commListPtr))
        allocate(commListPtr % rbuffer(commListPtr % nList))
@@ -3167,7 +3420,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the all-to-all communication of an input field into an output field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_alltoall_field4d_real(fieldIn, fieldout, haloLayersIn)!{{{
@@ -3179,13 +3432,12 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      integer, dimension(:), pointer, optional :: haloLayersIn !< Input: List of halo layers to communicate. Defaults to all
 
      type (field4dReal), pointer :: fieldInPtr, fieldOutPtr
-     type (mpas_exchange_list), pointer :: exchListPtr, exchListPtr2
+     type (mpas_exchange_list), pointer :: exchListPtr
      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
      type (dm_info), pointer :: dminfo
 
      logical :: comm_list_found
 
-     integer :: lastPackedIdx, lastUnpackedIdx, nPacked, nUnpacked
      integer :: nAdded, bufferOffset
      integer :: mpi_ierr
      integer :: iHalo, iBuffer, i, j, k, l
@@ -3212,7 +3464,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      nullify(sendList)
      nullify(recvList)
 
-     ! Setup recieve lists.
+     ! Setup receive lists.
      do iHalo = 1, nHaloLayers
        fieldOutPtr => fieldOut
        do while(associated(fieldOutPtr))
@@ -3289,7 +3541,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
        commListPtr => commListPtr % next
      end do
 
-     ! Allocate buffers for recieves, and initiate mpi_irecv calls.
+     ! Allocate buffers for receives, and initiate mpi_irecv calls.
      commListPtr => recvList
      do while(associated(commListPtr))
        allocate(commListPtr % rbuffer(commListPtr % nList))
@@ -3476,7 +3728,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the all-to-all communication of an input field into an output field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_alltoall_field5d_real(fieldIn, fieldout, haloLayersIn)!{{{
@@ -3488,13 +3740,12 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      integer, dimension(:), pointer, optional :: haloLayersIn !< Input: List of halo layers to communicate. Defaults to all.
 
      type (field5dReal), pointer :: fieldInPtr, fieldOutPtr
-     type (mpas_exchange_list), pointer :: exchListPtr, exchListPtr2
+     type (mpas_exchange_list), pointer :: exchListPtr
      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
      type (dm_info), pointer :: dminfo
 
      logical :: comm_list_found
 
-     integer :: lastPackedIdx, lastUnpackedIdx, nPacked, nUnpacked
      integer :: nAdded, bufferOffset
      integer :: mpi_ierr
      integer :: iHalo, iBuffer, i, j, k, l, m
@@ -3521,7 +3772,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      nullify(sendList)
      nullify(recvList)
 
-     ! Setup recieve lists.
+     ! Setup receive lists.
      do iHalo = 1, nHaloLayers
        fieldOutPtr => fieldOut
        do while(associated(fieldOutPtr))
@@ -3598,7 +3849,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
        commListPtr => commListPtr % next
      end do
 
-     ! Allocate buffers for recieves, and initiate mpi_irecv calls.
+     ! Allocate buffers for receives, and initiate mpi_irecv calls.
      commListPtr => recvList
      do while(associated(commListPtr))
        allocate(commListPtr % rbuffer(commListPtr % nList))
@@ -3791,7 +4042,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the halo exchange communication of an input field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_exch_halo_field1d_integer(field, haloLayersIn)!{{{
@@ -3804,13 +4055,11 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       type (dm_info), pointer :: dminfo
       type (field1DInteger), pointer :: fieldCursor, fieldCursor2
       type (mpas_exchange_list), pointer :: exchListPtr
-      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
+      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr
       integer :: mpi_ierr
       integer :: nHaloLayers, iHalo, i
       integer :: bufferOffset, nAdded
       integer, dimension(:), pointer :: haloLayers
-
-      logical :: comm_list_found
 
       do i = 1, 1
         if(field % dimSizes(i) <= 0) then
@@ -3835,130 +4084,9 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       end if
 
 #ifdef _MPI
-      ! Allocate communication lists, and setup dead header node.
-      allocate(sendList)
-      nullify(sendList % next)
-      sendList % procID = -1
-      sendList % nList = 0
 
-      allocate(recvList)
-      nullify(recvList % next)
-      recvList % procID = -1
-      recvList % nList = 0
-
-      dminfo   = field % block % domain % dminfo
-
-      ! Determine size of buffers for communication lists
-      fieldCursor => field
-      do while(associated(fieldCursor))
-
-        ! Need to aggregate across halo layers
-        do iHalo = 1, nHaloLayers
-          
-          ! Determine size from send lists
-          exchListPtr => fieldCursor % sendList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => sendList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                commListPtr % nList = commListPtr % nList + exchListPtr % nList
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => sendList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-              commListPtr % nList = exchListPtr % nList
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-
-          ! Setup recv lists
-          exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => recvList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => recvList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-        end do
-
-        fieldCursor => fieldCursor % next
-      end do
-
-      ! Remove the dead head pointer on send and recv list
-      commListPtr => sendList
-      sendList => sendList % next
-      deallocate(commListPtr)
-
-      commListPtr => recvList
-      recvList => recvList % next
-      deallocate(commListPtr)
-
-      ! Determine size of recieve lists
-      commListPtr => recvList
-      do while(associated(commListPtr))
-        bufferOffset = 0
-        do iHalo = 1, nHaloLayers
-          nAdded = 0
-          fieldCursor => field
-          do while(associated(fieldCursor))
-            exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-            do while(associated(exchListPtr))
-              if(exchListPtr % endPointID == commListPtr % procID) then
-                nAdded = max(nAdded, maxval(exchListPtr % srcList))
-              end if
-              exchListPtr => exchListPtr % next
-            end do
-            
-            fieldCursor => fieldCursor % next
-          end do
-          bufferOffset = bufferOffset + nAdded
-        end do
-        commListPtr % nList = bufferOffset
-
-        commListPtr => commListPtr % next
-      end do
-
+      ! Setup Communication Lists
+      call mpas_dmpar_build_comm_lists(field % sendList, field % recvList, haloLayers, field % dimsizes, sendList, recvList)
 
       ! Allocate space in recv lists, and initiate mpi_irecv calls
       commListPtr => recvList
@@ -4082,7 +4210,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the halo exchange communication of an input field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_exch_halo_field2d_integer(field, haloLayersIn)!{{{
@@ -4095,13 +4223,11 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       type (dm_info), pointer :: dminfo
       type (field2DInteger), pointer :: fieldCursor, fieldCursor2
       type (mpas_exchange_list), pointer :: exchListPtr
-      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
+      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr
       integer :: mpi_ierr
       integer :: nHaloLayers, iHalo, i, j
       integer :: bufferOffset, nAdded
       integer, dimension(:), pointer :: haloLayers
-
-      logical :: comm_list_found
 
       do i = 1, 2
         if(field % dimSizes(i) <= 0) then
@@ -4126,129 +4252,9 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       end if
 
 #ifdef _MPI
-      ! Allocate communication lists, and setup dead header nodes
-      allocate(sendList)
-      nullify(sendList % next)
-      sendList % procID = -1
-      sendList % nList = 0
 
-      allocate(recvList)
-      nullify(recvList % next)
-      recvList % procID = -1
-      recvList % nList = 0
-
-      dminfo   = field % block % domain % dminfo
-
-      ! Determine size of buffers for communication lists
-      fieldCursor => field
-      do while(associated(fieldCursor))
-
-        ! Need to aggregate across halo layers
-        do iHalo = 1, nHaloLayers
-          
-          ! Determine size from send lists
-          exchListPtr => fieldCursor % sendList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => sendList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                commListPtr % nList = commListPtr % nList + exchListPtr % nList * fieldCursor % dimSizes(1)
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => sendList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-              commListPtr % nList = exchListPtr % nList * fieldCursor % dimSizes(1)
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-
-          ! Setup recv lists
-          exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => recvList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => recvList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-        end do
-
-        fieldCursor => fieldCursor % next
-      end do
-
-      ! Remove the dead head pointer on send and recv list
-      commListPtr => sendList
-      sendList => sendList % next
-      deallocate(commListPtr)
-
-      commListPtr => recvList
-      recvList => recvList % next
-      deallocate(commListPtr)
-
-      ! Determine size of recieve list buffers
-      commListPtr => recvList
-      do while(associated(commListPtr))
-        bufferOffset = 0
-        do iHalo = 1, nHaloLayers
-          nAdded = 0
-          fieldCursor => field
-          do while(associated(fieldCursor))
-            exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-            do while(associated(exchListPtr))
-              if(exchListPtr % endPointID == commListPtr % procID) then
-                nAdded = max(nAdded, maxval(exchListPtr % srcList) * fieldCursor % dimSizes(1))
-              end if
-              exchListPtr => exchListPtr % next
-            end do
-            
-            fieldCursor => fieldCursor % next
-          end do
-          bufferOffset = bufferOffset + nAdded
-        end do
-        commListPtr % nList = bufferOffset
-
-        commListPtr => commListPtr % next
-      end do
+      ! Setup Communication Lists
+      call mpas_dmpar_build_comm_lists(field % sendList, field % recvList, haloLayers, field % dimsizes, sendList, recvList)
 
       ! Allocate space in recv lists, and initiate mpi_irecv calls
       commListPtr => recvList
@@ -4374,7 +4380,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the halo exchange communication of an input field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_exch_halo_field3d_integer(field, haloLayersIn)!{{{
@@ -4387,13 +4393,11 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       type (dm_info), pointer :: dminfo
       type (field3DInteger), pointer :: fieldCursor, fieldCursor2
       type (mpas_exchange_list), pointer :: exchListPtr
-      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
+      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr
       integer :: mpi_ierr
       integer :: nHaloLayers, iHalo, i, j, k
       integer :: bufferOffset, nAdded
       integer, dimension(:), pointer :: haloLayers
-
-      logical :: comm_list_found
 
       do i = 1, 3
         if(field % dimSizes(i) <= 0) then
@@ -4418,129 +4422,9 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       end if
 
 #ifdef _MPI
-      ! Allocate communication lists, and setup dead header nodes
-      allocate(sendList)
-      nullify(sendList % next)
-      sendList % procID = -1
-      sendList % nList = 0
 
-      allocate(recvList)
-      nullify(recvList % next)
-      recvList % procID = -1
-      recvList % nList = 0
-
-      dminfo   = field % block % domain % dminfo
-
-      ! Determine size of buffers for communication lists
-      fieldCursor => field
-      do while(associated(fieldCursor))
-
-        ! Need to aggregate across halo layers
-        do iHalo = 1, nHaloLayers
-          
-          ! Determine size from send lists
-          exchListPtr => fieldCursor % sendList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => sendList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                commListPtr % nList = commListPtr % nList + exchListPtr % nList * fieldCursor % dimSizes(1) * fieldCursor % dimSizes(2)
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => sendList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-              commListPtr % nList = exchListPtr % nList * fieldCursor % dimSizes(1) * fieldCursor % dimSizes(2)
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-
-          ! Setup recv lists
-          exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => recvList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => recvList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-        end do
-
-        fieldCursor => fieldCursor % next
-      end do
-
-      ! Remove the dead head pointer on send and recv list
-      commListPtr => sendList
-      sendList => sendList % next
-      deallocate(commListPtr)
-
-      commListPtr => recvList
-      recvList => recvList % next
-      deallocate(commListPtr)
-
-      ! Determine size of recv lists
-      commListPtr => recvList
-      do while(associated(commListPtr))
-        bufferOffset = 0
-        do iHalo = 1, nHaloLayers
-          nAdded = 0
-          fieldCursor => field
-          do while(associated(fieldCursor))
-            exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-            do while(associated(exchListPtr))
-              if(exchListPtr % endPointID == commListPtr % procID) then
-                nAdded = max(nAdded, maxval(exchListPtr % srcList) * fieldCursor % dimSizes(1) * fieldCursor % dimSizes(2))
-              end if
-              exchListPtr => exchListPtr % next
-            end do
-            
-            fieldCursor => fieldCursor % next
-          end do
-          bufferOffset = bufferOffset + nAdded
-        end do
-        commListPtr % nList = bufferOffset
-
-        commListPtr => commListPtr % next
-      end do
+      ! Setup Communication Lists
+      call mpas_dmpar_build_comm_lists(field % sendList, field % recvList, haloLayers, field % dimsizes, sendList, recvList)
 
       ! Allocate space in recv lists, and initiate mpi_irecv calls
       commListPtr => recvList
@@ -4672,7 +4556,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the halo exchange communication of an input field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_exch_halo_field1d_real(field, haloLayersIn)!{{{
@@ -4685,13 +4569,11 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       type (dm_info), pointer :: dminfo
       type (field1dReal), pointer :: fieldCursor, fieldCursor2
       type (mpas_exchange_list), pointer :: exchListPtr
-      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
+      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr
       integer :: mpi_ierr
       integer :: nHaloLayers, iHalo, i
       integer :: bufferOffset, nAdded
       integer, dimension(:), pointer :: haloLayers
-
-      logical :: comm_list_found
 
       do i = 1, 1
         if(field % dimSizes(i) <= 0) then
@@ -4716,130 +4598,9 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       end if
 
 #ifdef _MPI
-      ! Allocate communication lists, and setup dead header nodes
-      allocate(sendList)
-      nullify(sendList % next)
-      sendList % procID = -1
-      sendList % nList = 0
 
-      allocate(recvList)
-      nullify(recvList % next)
-      recvList % procID = -1
-      recvList % nList = 0
-
-      dminfo   = field % block % domain % dminfo
-
-      ! Determine size of buffers for communication lists
-      fieldCursor => field
-      do while(associated(fieldCursor))
-
-        ! Need to aggregate across halo layers
-        do iHalo = 1, nHaloLayers
-          
-          ! Determine size from send lists
-          exchListPtr => fieldCursor % sendList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => sendList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                commListPtr % nList = commListPtr % nList + exchListPtr % nList
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => sendList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-              commListPtr % nList = exchListPtr % nList
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-
-          ! Setup recv lists
-          exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => recvList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => recvList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-        end do
-
-        fieldCursor => fieldCursor % next
-      end do
-
-      ! Remove the dead head pointer on send and recv list
-      commListPtr => sendList
-      sendList => sendList % next
-      deallocate(commListPtr)
-
-      commListPtr => recvList
-      recvList => recvList % next
-      deallocate(commListPtr)
-
-      ! Determine size of recv lists
-      commListPtr => recvList
-      do while(associated(commListPtr))
-        bufferOffset = 0
-        do iHalo = 1, nHaloLayers
-          nAdded = 0
-          fieldCursor => field
-          do while(associated(fieldCursor))
-            exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-            do while(associated(exchListPtr))
-              if(exchListPtr % endPointID == commListPtr % procID) then
-                nAdded = max(nAdded, maxval(exchListPtr % srcList))
-              end if
-              exchListPtr => exchListPtr % next
-            end do
-            
-            fieldCursor => fieldCursor % next
-          end do
-          bufferOffset = bufferOffset + nAdded
-        end do
-        commListPtr % nList = bufferOffset
-
-        commListPtr => commListPtr % next
-      end do
-
+      ! Setup Communication Lists
+      call mpas_dmpar_build_comm_lists(field % sendList, field % recvList, haloLayers, field % dimsizes, sendList, recvList)
 
       ! Allocate space in recv lists, and initiate mpi_irecv calls
       commListPtr => recvList
@@ -4961,7 +4722,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the halo exchange communication of an input field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_exch_halo_field2d_real(field, haloLayersIn)!{{{
@@ -4974,13 +4735,11 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       type (dm_info), pointer :: dminfo
       type (field2dReal), pointer :: fieldCursor, fieldCursor2
       type (mpas_exchange_list), pointer :: exchListPtr
-      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
+      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr
       integer :: mpi_ierr
       integer :: nHaloLayers, iHalo, i, j
       integer :: bufferOffset, nAdded
       integer, dimension(:), pointer :: haloLayers
-
-      logical :: comm_list_found
 
       do i = 1, 2
         if(field % dimSizes(i) <= 0) then
@@ -5005,131 +4764,8 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       end if
 
 #ifdef _MPI
-      ! Allocate communication lists, and setup dead header nodes
-      allocate(sendList)
-      nullify(sendList % next)
-      sendList % procID = -1
-      sendList % nList = 0
-
-      allocate(recvList)
-      nullify(recvList % next)
-      recvList % procID = -1
-      recvList % nList = 0
-
-      dminfo   = field % block % domain % dminfo
-
-      ! Determine size of buffers for communication lists
-      fieldCursor => field
-      do while(associated(fieldCursor))
-
-        ! Need to aggregate across halo layers
-        do iHalo = 1, nHaloLayers
-          
-          ! Determine size from send lists
-          exchListPtr => fieldCursor % sendList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => sendList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                commListPtr % nList = commListPtr % nList + exchListPtr % nList * fieldCursor % dimSizes(1)
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => sendList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-              commListPtr % nList = exchListPtr % nList * fieldCursor % dimSizes(1)
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-
-          ! Setup recv lists
-          exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => recvList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                commListPtr % nList = commListPtr % nList + exchListPtr % nList * fieldCursor % dimSizes(1)
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => recvList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-              commListPtr % nList = exchListPtr % nList * fieldCursor % dimSizes(1)
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-        end do
-
-        fieldCursor => fieldCursor % next
-      end do
-
-      ! Remove the dead head pointer on send and recv list
-      commListPtr => sendList
-      sendList => sendList % next
-      deallocate(commListPtr)
-
-      commListPtr => recvList
-      recvList => recvList % next
-      deallocate(commListPtr)
-
-      ! Determine size of recv lists
-      commListPtr => recvList
-      do while(associated(commListPtr))
-        bufferOffset = 0
-        do iHalo = 1, nHaloLayers
-          nAdded = 0
-          fieldCursor => field
-          do while(associated(fieldCursor))
-            exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-            do while(associated(exchListPtr))
-              if(exchListPtr % endPointID == commListPtr % procID) then
-                nAdded = max(nAdded, maxval(exchListPtr % srcList) * fieldCursor % dimSizes(1))
-              end if
-              exchListPtr => exchListPtr % next
-            end do
-            
-            fieldCursor => fieldCursor % next
-          end do
-          bufferOffset = bufferOffset + nAdded
-        end do
-        commListPtr % nList = bufferOffset
-
-        commListPtr => commListPtr % next
-      end do
+      ! Setup Communication Lists
+      call mpas_dmpar_build_comm_lists(field % sendList, field % recvList, haloLayers, field % dimsizes, sendList, recvList)
 
       ! Allocate space in recv lists, and initiate mpi_irecv calls
       commListPtr => recvList
@@ -5255,7 +4891,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the halo exchange communication of an input field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_exch_halo_field3d_real(field, haloLayersIn)!{{{
@@ -5268,13 +4904,11 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       type (dm_info), pointer :: dminfo
       type (field3dReal), pointer :: fieldCursor, fieldCursor2
       type (mpas_exchange_list), pointer :: exchListPtr
-      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
+      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr
       integer :: mpi_ierr
       integer :: nHaloLayers, iHalo, i, j, k
       integer :: bufferOffset, nAdded
       integer, dimension(:), pointer :: haloLayers
-
-      logical :: comm_list_found
 
       do i = 1, 3
         if(field % dimSizes(i) <= 0) then
@@ -5299,129 +4933,8 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       end if
 
 #ifdef _MPI
-      ! Allocate communication lists, and setup dead header nodes
-      allocate(sendList)
-      nullify(sendList % next)
-      sendList % procID = -1
-      sendList % nList = 0
-
-      allocate(recvList)
-      nullify(recvList % next)
-      recvList % procID = -1
-      recvList % nList = 0
-
-      dminfo   = field % block % domain % dminfo
-
-      ! Determine size of buffers for communication lists
-      fieldCursor => field
-      do while(associated(fieldCursor))
-
-        ! Need to aggregate across halo layers
-        do iHalo = 1, nHaloLayers
-          
-          ! Determine size from send lists
-          exchListPtr => fieldCursor % sendList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => sendList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                commListPtr % nList = commListPtr % nList + exchListPtr % nList * fieldCursor % dimSizes(1) * fieldCursor % dimSizes(2)
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => sendList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-              commListPtr % nList = exchListPtr % nList * fieldCursor % dimSizes(1) * fieldCursor % dimSizes(2)
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-
-          ! Setup recv lists
-          exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => recvList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => recvList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-        end do
-
-        fieldCursor => fieldCursor % next
-      end do
-
-      ! Remove the dead head pointer on send and recv list
-      commListPtr => sendList
-      sendList => sendList % next
-      deallocate(commListPtr)
-
-      commListPtr => recvList
-      recvList => recvList % next
-      deallocate(commListPtr)
-
-      ! Determine size of recv lists
-      commListPtr => recvList
-      do while(associated(commListPtr))
-        bufferOffset = 0
-        do iHalo = 1, nHaloLayers
-          nAdded = 0
-          fieldCursor => field
-          do while(associated(fieldCursor))
-            exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-            do while(associated(exchListPtr))
-              if(exchListPtr % endPointID == commListPtr % procID) then
-                nAdded = max(nAdded, maxval(exchListPtr % srcList) * fieldCursor % dimSizes(1) * fieldCursor % dimSizes(2))
-              end if
-              exchListPtr => exchListPtr % next
-            end do
-            
-            fieldCursor => fieldCursor % next
-          end do
-          bufferOffset = bufferOffset + nAdded
-        end do
-        commListPtr % nList = bufferOffset
-
-        commListPtr => commListPtr % next
-      end do
+      ! Setup Communication Lists
+      call mpas_dmpar_build_comm_lists(field % sendList, field % recvList, haloLayers, field % dimsizes, sendList, recvList)
 
       ! Allocate space in recv lists, and initiate mpi_irecv calls
       commListPtr => recvList
@@ -5553,7 +5066,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the halo exchange communication of an input field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_exch_halo_field4d_real(field, haloLayersIn)!{{{
@@ -5566,13 +5079,11 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       type (dm_info), pointer :: dminfo
       type (field4dReal), pointer :: fieldCursor, fieldCursor2
       type (mpas_exchange_list), pointer :: exchListPtr
-      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
+      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr
       integer :: mpi_ierr
       integer :: nHaloLayers, iHalo, i, j, k, l
       integer :: bufferOffset, nAdded
       integer, dimension(:), pointer :: haloLayers
-
-      logical :: comm_list_found
 
       do i = 1, 4
         if(field % dimSizes(i) <= 0) then
@@ -5597,129 +5108,9 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       end if
 
 #ifdef _MPI
-      ! Allocate communication lists, and setup dead header nodes
-      allocate(sendList)
-      nullify(sendList % next)
-      sendList % procID = -1
-      sendList % nList = 0
 
-      allocate(recvList)
-      nullify(recvList % next)
-      recvList % procID = -1
-      recvList % nList = 0
-
-      dminfo   = field % block % domain % dminfo
-
-      ! Determine size of buffers for communication lists
-      fieldCursor => field
-      do while(associated(fieldCursor))
-
-        ! Need to aggregate across halo layers
-        do iHalo = 1, nHaloLayers
-          
-          ! Determine size from send lists
-          exchListPtr => fieldCursor % sendList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => sendList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                commListPtr % nList = commListPtr % nList + exchListPtr % nList * fieldCursor % dimSizes(1) * fieldCursor % dimSizes(2) * fieldCursor % dimSizes(3)
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => sendList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-              commListPtr % nList = exchListPtr % nList * fieldCursor % dimSizes(1) * fieldCursor % dimSizes(2) * fieldCursor % dimSizes(3)
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-
-          ! Setup recv lists
-          exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => recvList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => recvList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-        end do
-
-        fieldCursor => fieldCursor % next
-      end do
-
-      ! Remove the dead head pointer on send and recv list
-      commListPtr => sendList
-      sendList => sendList % next
-      deallocate(commListPtr)
-
-      commListPtr => recvList
-      recvList => recvList % next
-      deallocate(commListPtr)
-
-      ! Determine size of recv lists
-      commListPtr => recvList
-      do while(associated(commListPtr))
-        bufferOffset = 0
-        do iHalo = 1, nHaloLayers
-          nAdded = 0
-          fieldCursor => field
-          do while(associated(fieldCursor))
-            exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-            do while(associated(exchListPtr))
-              if(exchListPtr % endPointID == commListPtr % procID) then
-                nAdded = max(nAdded, maxval(exchListPtr % srcList) * fieldCursor % dimSizes(1) * fieldCursor % dimSizes(2) * fieldCursor % dimSizes(3))
-              end if
-              exchListPtr => exchListPtr % next
-            end do
-            
-            fieldCursor => fieldCursor % next
-          end do
-          bufferOffset = bufferOffset + nAdded
-        end do
-        commListPtr % nList = bufferOffset
-
-        commListPtr => commListPtr % next
-      end do
+      ! Setup Communication Lists
+      call mpas_dmpar_build_comm_lists(field % sendList, field % recvList, haloLayers, field % dimsizes, sendList, recvList)
 
       ! Allocate space in recv lists, and initiate mpi_irecv calls
       commListPtr => recvList
@@ -5859,7 +5250,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !> \date   03/26/13
 !> \details
 !>  This routine handles the halo exchange communication of an input field across all processors.
-!>  It requries exchange lists to be created prior to calling this routine.
+!>  It requires exchange lists to be created prior to calling this routine.
 !
 !-----------------------------------------------------------------------
    subroutine mpas_dmpar_exch_halo_field5d_real(field, haloLayersIn)!{{{
@@ -5872,13 +5263,11 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       type (dm_info), pointer :: dminfo
       type (field5dReal), pointer :: fieldCursor, fieldCursor2
       type (mpas_exchange_list), pointer :: exchListPtr
-      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr, commListPtr2
+      type (mpas_communication_list), pointer :: sendList, recvList, commListPtr
       integer :: mpi_ierr
       integer :: nHaloLayers, iHalo, i, j, k, l, m
       integer :: bufferOffset, nAdded
       integer, dimension(:), pointer :: haloLayers
-
-      logical :: comm_list_found
 
       do i = 1, 5
         if(field % dimSizes(i) <= 0) then
@@ -5903,129 +5292,9 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
       end if
 
 #ifdef _MPI
-      ! Allocate communication lists, and setup dead header nodes
-      allocate(sendList)
-      nullify(sendList % next)
-      sendList % procID = -1
-      sendList % nList = 0
 
-      allocate(recvList)
-      nullify(recvList % next)
-      recvList % procID = -1
-      recvList % nList = 0
-
-      dminfo   = field % block % domain % dminfo
-
-      ! Determine size of buffers for communication lists
-      fieldCursor => field
-      do while(associated(fieldCursor))
-
-        ! Need to aggregate across halo layers
-        do iHalo = 1, nHaloLayers
-          
-          ! Determine size from send lists
-          exchListPtr => fieldCursor % sendList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => sendList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                commListPtr % nList = commListPtr % nList + exchListPtr % nList * fieldCursor % dimSizes(1) * fieldCursor % dimSizes(2) * fieldCursor % dimSizes(3) * fieldCursor % dimSizes(4)
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => sendList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-              commListPtr % nList = exchListPtr % nList * fieldCursor % dimSizes(1) * fieldCursor % dimSizes(2) * fieldCursor % dimSizes(3) * fieldCursor % dimSizes(4)
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-
-          ! Setup recv lists
-          exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-          do while(associated(exchListPtr))
-            comm_list_found = .false.
-
-            commListPtr => recvList
-            do while(associated(commListPtr))
-              if(commListPtr % procID == exchListPtr % endPointId) then
-                comm_list_found = .true.
-                exit
-              end if
-
-              commListPtr => commListPtr % next
-            end do
-
-            if(.not. comm_list_found) then
-              commListPtr => recvList
-              commListPtr2 => commListPtr % next
-              do while(associated(commListPtr2))
-                commListPtr => commListPtr % next
-                commListPtr2 => commListPtr % next
-              end do
-
-              allocate(commListPtr % next)
-              commListPtr => commListPtr % next
-              nullify(commListPtr % next)
-              commListPtr % procID = exchListPtr % endPointID
-            end if
-
-            exchListPtr => exchListPtr % next
-          end do
-        end do
-
-        fieldCursor => fieldCursor % next
-      end do
-
-      ! Remove the dead head pointer on send and recv list
-      commListPtr => sendList
-      sendList => sendList % next
-      deallocate(commListPtr)
-
-      commListPtr => recvList
-      recvList => recvList % next
-      deallocate(commListPtr)
-
-      ! Determine size of recv lists
-      commListPtr => recvList
-      do while(associated(commListPtr))
-        bufferOffset = 0
-        do iHalo = 1, nHaloLayers
-          nAdded = 0
-          fieldCursor => field
-          do while(associated(fieldCursor))
-            exchListPtr => fieldCursor % recvList % halos(haloLayers(iHalo)) % exchList
-            do while(associated(exchListPtr))
-              if(exchListPtr % endPointID == commListPtr % procID) then
-                nAdded = max(nAdded, maxval(exchListPtr % srcList) * fieldCursor % dimSizes(1) * fieldCursor % dimSizes(2) * fieldCursor % dimSizes(3) * fieldCursor % dimSizes(4))
-              end if
-              exchListPtr => exchListPtr % next
-            end do
-            
-            fieldCursor => fieldCursor % next
-          end do
-          bufferOffset = bufferOffset + nAdded
-        end do
-        commListPtr % nList = bufferOffset
-
-        commListPtr => commListPtr % next
-      end do
+      ! Setup Communication Lists
+      call mpas_dmpar_build_comm_lists(field % sendList, field % recvList, haloLayers, field % dimsizes, sendList, recvList)
 
       ! Allocate space in recv lists, and initiate mpi_irecv calls
       commListPtr => recvList
@@ -6164,7 +5433,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
    end subroutine mpas_dmpar_exch_halo_field5d_real!}}}
 
 !-----------------------------------------------------------------------
-!  routine mpas_dmpar_init_mulithalo_exchange_list
+!  routine mpas_dmpar_init_multihalo_exchange_list
 !
 !> \brief MPAS dmpar initialize muiltihalo exchange list routine.
 !> \author Doug Jacobsen
@@ -6173,7 +5442,7 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
 !>  This routine initializes the multihalo exchange lists, based on a number of halo layers.
 !
 !-----------------------------------------------------------------------
-   subroutine mpas_dmpar_init_mulithalo_exchange_list(exchList, nHalos)!{{{
+   subroutine mpas_dmpar_init_multihalo_exchange_list(exchList, nHalos)!{{{
      type (mpas_multihalo_exchange_list), pointer :: exchList !< Input: Exchange list to initialize
      integer, intent(in) :: nHalos !< Input: Number of halo layers for exchange list
 
@@ -6184,7 +5453,9 @@ subroutine mpas_dmpar_get_exch_list(haloLayer, ownedListField, neededListField, 
      do i = 1, nHalos
        nullify(exchList % halos(i) % exchList)
      end do
-   end subroutine mpas_dmpar_init_mulithalo_exchange_list!}}}
+     nullify(exchList % next)
+     nullify(exchList % prev)
+   end subroutine mpas_dmpar_init_multihalo_exchange_list!}}}
 
 !-----------------------------------------------------------------------
 !  routine mpas_dmpar_destroy_mulithalo_exchange_list

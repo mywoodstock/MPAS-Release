@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -56,7 +56,7 @@ module mpas_io_output
       else if (trim(stream) == 'RESTART') then
          if(present(outputSuffix)) then
             call mpas_insert_string_suffix(config_restart_name, outputSuffix, tempfilename)
-            open(22,file='restart_timestamp',form='formatted',status='replace')
+            open(22,file=trim(config_restart_timestamp_name),form='formatted',status='replace')
             write(22,*) outputSuffix
             close(22)
          else

@@ -25,8 +25,8 @@ CONTAINS
                      ims,ime, jms,jme, kms,kme,                    &
                      its,ite, jts,jte, kts,kte,                    &
                      ustm,ck,cka,cd,cda,isftcflx,iz0tlnd,scm_force_flux &
-#if defined(non_hydrostatic_core) || defined(hydrostatic_core)
-                    ,areaCell                                      &
+#if defined(mpas)
+                    ,dxCell                                        &
 #endif
                     )
 !-------------------------------------------------------------------
@@ -188,9 +188,9 @@ CONTAINS
       INTEGER,  OPTIONAL,  INTENT(IN )   ::     ISFTCFLX, IZ0TLND
       INTEGER,  OPTIONAL,  INTENT(IN )   ::     SCM_FORCE_FLUX
 
-#if defined(non_hydrostatic_core) || defined(hydrostatic_core)
+#if defined(mpas)
 !MPAS specific (Laura D. Fowler - 2013-03-06):
-      real,intent(in),dimension(ims:ime,jms:jme),optional:: areaCell
+      real,intent(in),dimension(ims:ime,jms:jme),optional:: dxCell
 !MPAS specific end.
 #endif
 
@@ -238,11 +238,11 @@ CONTAINS
                 ids,ide, jds,jde, kds,kde,                         &
                 ims,ime, jms,jme, kms,kme,                         &
                 its,ite, jts,jte, kts,kte                          &
-#if defined(non_hydrostatic_core) || defined(hydrostatic_core)
+#if defined(mpas)
 !MPAS specific (Laura D. Fowler - 2013-03-06):
                ,isftcflx,iz0tlnd,scm_force_flux,                   &
                USTM(ims,j),CK(ims,j),CKA(ims,j),                   &
-               CD(ims,j),CDA(ims,j),areaCell(ims,j)                &
+               CD(ims,j),CDA(ims,j),dxCell(ims,j)                  &
 #elif ( EM_CORE == 1 )
                 ,isftcflx,iz0tlnd,scm_force_flux,                  &
                 USTM(ims,j),CK(ims,j),CKA(ims,j),                  &
@@ -269,9 +269,9 @@ CONTAINS
                      ims,ime, jms,jme, kms,kme,                    &
                      its,ite, jts,jte, kts,kte,                    &
                      isftcflx, iz0tlnd, scm_force_flux,            &
-#if defined(non_hydrostatic_core) || defined(hydrostatic_core)
+#if defined(mpas)
 !MPAS specific (Laura D. Fowler - 2013-03-06):
-                     ustm,ck,cka,cd,cda,areaCell                   )
+                     ustm,ck,cka,cd,cda,dxCell                     )
 #else
                      ustm,ck,cka,cd,cda                            )
 #endif
@@ -351,9 +351,9 @@ CONTAINS
       INTEGER,  OPTIONAL,  INTENT(IN )   ::     ISFTCFLX, IZ0TLND
       INTEGER,  OPTIONAL,  INTENT(IN )   ::     SCM_FORCE_FLUX
 
-#if defined(non_hydrostatic_core) || defined(hydrostatic_core)
+#if defined(mpas)
 !MPAS specific (Laura D. Fowler - 2013-03-06):
-      real,intent(in),dimension(ims:ime),optional:: areaCell
+      real,intent(in),dimension(ims:ime),optional:: dxCell
 !MPAS specific end.
 #endif
       
@@ -525,8 +525,8 @@ CONTAINS
 ! Mahrt and Sun low-res correction
 !MPAS specific (Laura D. Fowler): We take into accound the actual size of individual
 !grid-boxes:
-        if(present(areaCell)) then
-           vsgd = 0.32 * (max(sqrt(areaCell(i))/5000.-1.,0.))**.33
+        if(present(dxCell)) then
+           vsgd = 0.32 * (max(dxCell(i)/5000.-1.,0.))**.33
         else
            VSGD = 0.32 * (max(dx/5000.-1.,0.))**.33
         endif

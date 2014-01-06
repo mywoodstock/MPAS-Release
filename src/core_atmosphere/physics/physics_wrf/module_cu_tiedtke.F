@@ -24,10 +24,20 @@ MODULE module_cu_tiedtke
 !-------------------------------------------------------------    
 !  Ends the parameters set
 !++++++++++++++++++++++++++++
+#if defined(mpas)
+!... In MPAS, the variable RV is already defined in ./src/framework/mpas_constants.F. Here,
+!    we declare RV as a private variable to avoid conflicts at compilation time.
+!    Laura D. Fowler (birch.ucar.edu) / 2013-06-19.
+     REAL,PRIVATE :: G,CPV,RV
+     REAL :: API,A,EOMEGA,RD,CPD,RCPD,VTMPC1,VTMPC2,      &
+             RHOH2O,ALV,ALS,ALF,CLW,TMELT,SOLC,STBO,DAYL,YEARL, &
+             C1ES,C2ES,C3LES,C3IES,C4LES,C4IES,C5LES,C5IES,ZRG 
+#else
      REAL,PRIVATE :: G,CPV
      REAL :: API,A,EOMEGA,RD,RV,CPD,RCPD,VTMPC1,VTMPC2,   &
              RHOH2O,ALV,ALS,ALF,CLW,TMELT,SOLC,STBO,DAYL,YEARL, &
              C1ES,C2ES,C3LES,C3IES,C4LES,C4IES,C5LES,C5IES,ZRG 
+#endif
     
      REAL :: ENTRPEN,ENTRSCV,ENTRMID,ENTRDD,CMFCTOP,RHM,RHC,    &
              CMFCMAX,CMFCMIN,CMFDEPS,RHCDD,CPRCON,CRIRH,ZBUO0,  &
@@ -267,7 +277,7 @@ CONTAINS
                                                   ,F_QI      &
                                                   ,F_QS
  
-#if defined(non_hydrostatic_core) || defined(hydrostatic_core)
+#if defined(mpas)
       REAL,  INTENT(IN    ):: CUDT
       REAL,  INTENT(IN    ), OPTIONAL:: CURR_SECS
       LOGICAL,INTENT(IN   ), OPTIONAL:: ADAPT_STEP_FLAG
@@ -336,7 +346,7 @@ CONTAINS
       LOGICAL :: run_param , doing_adapt_dt , decided
 
 !-------other local variables----
-#if defined(non_hydrostatic_core) || defined(hydrostatic_core)
+#if defined(mpas)
 !MPAS specific (Laura D. Fowler):
       INTEGER,DIMENSION(its:ite):: KTYPE
       REAL,DIMENSION(its:ite,kts:kte):: SIG1
@@ -465,7 +475,7 @@ CONTAINS
         ENDDO
       ENDDO
 
-#if defined(non_hydrostatic_core) || defined(hydrostatic_core)
+#if defined(mpas)
 !MPAS specific
       DO k=kts,kte
         zz = kte+1-k        
@@ -514,7 +524,7 @@ CONTAINS
         ENDDO
       ENDDO 
 
-#if defined(non_hydrostatic_core) || defined(hydrostatic_core)
+#if defined(mpas)
 !MPAS specific (Laura D. Fowler):
       DO k=kts,kte
          zz = kte+1-k
@@ -683,7 +693,7 @@ CONTAINS
           ZLU(lq,km),     ZLUDE(lq,km), ZMFU(lq,km),  ZMFD(lq,km),  &
           ZQSAT(lq,km),   pqc(lq,km),   pqi(lq,km),   ZRAIN(lq)
 
-#if defined(non_hydrostatic_core) || defined(hydrostatic_core)
+#if defined(mpas)
 !MPAS specific (Laura D. Fowler):
       REAL sig(km1)
       REAL sig1(lq,km)
@@ -934,7 +944,7 @@ CONTAINS
               PCTE(KLON,KLEV),        ZCAPE(KLON),        &
               ZHEAT(KLON),            ZHHATT(KLON,KLEV),  &
               ZHMIN(KLON),            ZRELH(KLON)
-#if defined(non_hydrostatic_core) || defined(hydrostatic_core)
+#if defined(mpas)
 !MPAS specific (Laura D. Fowler):
       REAL     sig1(KLON,KLEV)
 #else
@@ -2375,7 +2385,7 @@ CONTAINS
               PRFL(KLON),             PRAIN(KLON)
       REAL     PTEN(KLON,KLEV),        PDPMEL(KLON,KLEV), &
               PSFL(KLON),             ZPSUBCL(KLON)
-#if defined(non_hydrostatic_core) || defined(hydrostatic_core)
+#if defined(mpas)
 !MPAS specific (Laura D. Fowler):
       REAL sig1(KLON,KLEV)
 #else
@@ -2482,7 +2492,7 @@ CONTAINS
       IF(LDCUM(JL).AND.JK.GE.KCBOT(JL).AND. &
              ZPSUBCL(JL).GT.1.E-20) THEN
           ZRFL=ZPSUBCL(JL)
-#if defined(non_hydrostatic_core) || defined(hydrostatic_core)
+#if defined(mpas)
 !MPAS specific (Laura D. Fowler):
           CEVAPCU=CEVAPCU1*SQRT(CEVAPCU2*SQRT(sig1(JL,JK)))
 #else

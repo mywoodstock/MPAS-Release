@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -22,6 +22,7 @@
 
         use mpas_kind_types
         use mpas_grid_types
+        use mpas_io_units
 
         implicit none
         save
@@ -66,7 +67,7 @@
 !-----------------------------------------------------------------------
         subroutine mpas_timer_start(timer_name, clear_timer, timer_ptr)!{{{
 #         ifdef _MPI
-          use mpi
+          include 'mpif.h'
 #         endif
 
           character (len=*), intent (in) :: timer_name !< Input: name of timer, stored as name of timer
@@ -207,7 +208,7 @@
 !-----------------------------------------------------------------------
         subroutine mpas_timer_stop(timer_name, timer_ptr)!{{{
 #         ifdef _MPI
-          use mpi
+          include 'mpif.h'
 #         endif
 
           character (len=*), intent(in) :: timer_name !< Input: name of timer to stop
@@ -307,9 +308,11 @@
 
           total_found = .false.
 
+#ifdef MPAS_SYNC_TIMERS
           if(associated(domain_info) .and. synced == 0) then
             call mpas_timer_sync()
           endif
+#endif
 
           if(present(timer_ptr) .and. (.not.present(total_ptr))) then
             print *,'timer_write :: timer_ptr valid, but total_ptr is not assigned.'
@@ -330,7 +333,9 @@
               percent = timer_ptr%total_time/total_ptr%total_time
             endif
 
-            write(*,'(i2, 1x, a35, f15.5, i10, 3f15.5, 2f8.2)') timer_ptr%levels, tname(1:timer_ptr%levels)//timer_ptr%timer_name, timer_ptr%total_time, timer_ptr%calls, timer_ptr%min_time, timer_ptr%max_time, timer_ptr%avg_time, percent, timer_ptr%efficiency
+            write(stdoutUnit,'(i2, 1x, a35, f15.5, i10, 3f15.5, 2f8.2)') timer_ptr%levels, tname(1:timer_ptr%levels)// &
+                      timer_ptr%timer_name, timer_ptr%total_time, timer_ptr%calls, timer_ptr%min_time, timer_ptr%max_time, &
+                      timer_ptr%avg_time, percent, timer_ptr%efficiency
             return
           endif
 
@@ -350,8 +355,10 @@
             stop
           end if
 
-          write(*,'(3x, a10, 24x, a15, a10, a13, a15, a15, a12, a12)') 'timer_name', 'total', 'calls', 'min', 'max', 'avg', 'percent', 'efficiency'
-          write(*,'(i2, 1x, a35, f15.5, i10, 3f15.5)') total%levels, total%timer_name, total%total_time, total%calls, total%min_time, total%max_time, total%avg_time
+          write(stdoutUnit,'(3x, a10, 24x, a15, a10, a13, a15, a15, a12, a12)') 'timer_name', 'total', 'calls', 'min', 'max', &
+                    'avg', 'percent', 'efficiency'
+          write(stdoutUnit,'(i2, 1x, a35, f15.5, i10, 3f15.5)') total%levels, total%timer_name, total%total_time, total%calls, &
+                     total%min_time, total%max_time, total%avg_time
 
           current => all_timers
 

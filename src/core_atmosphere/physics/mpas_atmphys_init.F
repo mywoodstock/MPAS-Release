@@ -1,11 +1,11 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
 ! Additional copyright and license information can be found in the LICENSE file
 ! distributed with this code, or at http://mpas-dev.github.com/license.html
 !
-!=============================================================================================
+!==================================================================================================
  module mpas_atmphys_init
  use mpas_grid_types
  use mpas_configure, only: config_do_restart,          &
@@ -14,7 +14,8 @@
                            config_conv_deep_scheme,    &
                            config_sfclayer_scheme,     &
                            config_radt_lw_scheme,      &
-                           config_radt_sw_scheme
+                           config_radt_sw_scheme,      &
+                           config_o3climatology
  use mpas_timekeeping
 
  use mpas_atmphys_driver_convection_deep, only: init_convection_deep
@@ -25,41 +26,88 @@
  use mpas_atmphys_driver_sfclayer
 
  use mpas_atmphys_landuse
+ use mpas_atmphys_o3climatology
 
  implicit none
  private
  public:: physics_init
 
+!>\brief MPAS main initialization subroutine for all physics parameterizations.
+!>\author Laura D. Fowler (send comments to laura@ucar.edu).
+!>\date 2013-05-01.
+!>
+!>\details
+!>
+!> subroutines in mpas_atmphys_init:
+!> ---------------------------------
+!> physics_init    : call initialization of individual physics parameterizations.
+!> init_dir_forphys: needed for initialization of "reconstruct" subroutines.
+!> r3_normalize    : needed for initialization of "reconstruct" subroutines.
+!>
+!> add-ons and modifications to sourcecode:
+!> ----------------------------------------
+!>    * added structure diag in calls to subroutine init_radiation_lw and init_radiation_sw.
+!>      Laura D. Fowler (birch.mmm.ucar.edu) / 2013-07-01.
+!>    * added call to subroutine init_o3climatology. reads monthly-mean climatological ozone data
+!>      and interpolates ozone data to the MPAS grid.
+!>      Laura D. Fowler (birch.mmm.ucar.edu) / 2013-07-03.
+!>    * added the calculation of the mean distance between cell centers.
+!>      Laura D. Fowler (birch.mmm.ucar.edu) / 2013-08-22.
+!>    * added initialization of variable xicem.
+!>      Laura D. Fowler (birch.mmm.ucar.edu) / 2013-08-24.
+
+
  contains
 
-!=============================================================================================
- subroutine physics_init(dminfo,clock,config_do_restart,mesh,state_1,state_2, &
-                         diag_physics,sfc_input)
-!=============================================================================================
+!==================================================================================================
+ subroutine physics_init(dminfo,clock,config_do_restart,mesh,diag,state_1,state_2, &
+                         diag_physics,atm_input,sfc_input)
+!==================================================================================================
 
 !input arguments:
  logical,intent(in):: config_do_restart
  type (dm_info), intent(in):: dminfo
  type(mesh_type),intent(in):: mesh
+ type(diag_type),intent(in):: diag
  type(MPAS_Clock_type),intent(in):: clock
 
 !inout arguments:
  type(state_type),intent(inout):: state_1,state_2
  type(diag_physics_type),intent(inout):: diag_physics
- type(sfc_input_type) ,intent(inout):: sfc_input
+ type(atm_input_type),intent(inout):: atm_input
+ type(sfc_input_type),intent(inout):: sfc_input
 
 !local variables:
  type(MPAS_Time_Type):: currTime
 
  logical:: init_done
  integer:: iCell,iLag,ierr,julday 
+ integer:: iEdge,nEdges
 
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
  write(0,*)
  write(0,*) '--- enter subroutine physics_init:'
 
  currTime = mpas_get_clock_time(clock,MPAS_NOW,ierr)
  call mpas_get_time(curr_time=currTime,DoY=julday,ierr=ierr)
+
+!calculation of the mean distance between cell centers:
+ if(.not. config_do_restart) then
+    do iCell = 1, mesh % nCellsSolve
+       diag_physics % dcEdge_m % array(iCell) = 0._RKIND
+       nEdges = mesh%nEdgesOnCell%array(iCell)
+       do iEdge = 1, nEdges
+          diag_physics%dcEdge_m%array(iCell) = diag_physics%dcEdge_m%array(iCell) &
+                       + mesh%dcEdge%array(mesh%edgesOnCell%array(iEdge,iCell))
+       enddo
+       diag_physics % dcEdge_m % array(iCell) = diag_physics % dcEdge_m % array(iCell) &
+                       / nEdges
+!      write(0,102) iCell,nEdges,(mesh%dcEdge%array(mesh%edgesOnCell%array(iEdge,iCell)), &
+!                   iEdge=1,nEdges),diag_physics%dcEdge_m%array(iCell)
+    enddo
+ endif
+ 101 format(8i9,10(1x,e15.8))
+ 102 format(2i9,10(1x,e15.8))
 
 !initialization of east-north directions to convert u-tendencies from cell centers to cell
 !edges:
@@ -117,6 +165,24 @@
     enddo
  endif
 
+!initialization of xicem:
+ if(.not.config_do_restart) then
+    write(0,*) '--- initialization of xicem:'
+    do iCell = 1, mesh % nCellsSolve
+       diag_physics % xicem % array(iCell) = sfc_input % xice % array(iCell)
+    enddo
+ endif
+
+!initialization of the local sea-surface temperature when a diurnal cycle of the
+!sea-surface temperature is applied. This avoids having the array sstsk equal to
+!zero over land:
+ if(.not. config_do_restart) then
+    write(0,*) '--- initialization of sstsk:'
+    do iCell = 1, mesh % nCellsSolve
+       diag_physics % sstsk % array(iCell) = sfc_input % sst % array(iCell)
+    enddo
+ endif
+
 !initialization of temperatures needed for updating the deep soil temperature:
  if(.not. config_do_restart) then
     do iCell = 1, mesh % nCellsSolve
@@ -130,6 +196,10 @@
        enddo
     enddo
  endif
+
+!read the input files that contain the monthly-mean ozone climatology on fixed pressure levels:
+ if(config_o3climatology .and. (.not. config_do_restart)) &
+    call init_o3climatology(mesh,atm_input)
 
 !initialization of global surface properties. set here for now, but may be moved when time
 !manager is implemented:
@@ -155,7 +225,7 @@
  init_done = .false.
  if(config_radt_sw_scheme.ne.'off') then
     if(trim(config_radt_sw_scheme) .eq. 'cam_sw') then
-       call init_radiation_sw(dminfo,mesh,state_1,state_2)
+       call init_radiation_sw(dminfo,mesh,atm_input,diag,state_1,state_2)
        init_done = .true.
     else
        call init_radiation_sw(dminfo)
@@ -168,7 +238,7 @@
  if(config_radt_lw_scheme.ne.'off') then    
     if(trim(config_radt_lw_scheme) .eq. 'cam_lw') then
        if(.not. init_done) then
-          call init_radiation_lw(dminfo,mesh,state_1,state_2)
+          call init_radiation_lw(dminfo,mesh,atm_input,diag,state_1,state_2)
        else
           write(0,*)
           write(0,*) '--- camrad lw initialization done above'
@@ -184,9 +254,9 @@
 
  end subroutine physics_init
 
-!=============================================================================================
+!==================================================================================================
  subroutine init_dirs_forphys(mesh)
-!=============================================================================================
+!==================================================================================================
 
 !inout arguments:
 !----------------
@@ -221,22 +291,23 @@
 
  end subroutine init_dirs_forphys
 
-!=============================================================================================
+!==================================================================================================
  subroutine r3_normalize(ax, ay, az)
-!=============================================================================================
+!==================================================================================================
 !normalizes the vector (ax, ay, az)
 
  real (kind=RKIND), intent(inout) :: ax, ay, az
  real (kind=RKIND) :: mi
 
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
 
  mi = 1.0 / sqrt(ax**2 + ay**2 + az**2)
  ax = ax * mi
  ay = ay * mi
  az = az * mi
 
- end subroutine r3_normalize 
-!=============================================================================================
+ end subroutine r3_normalize
+
+!==================================================================================================
  end module mpas_atmphys_init
-!=============================================================================================
+!==================================================================================================

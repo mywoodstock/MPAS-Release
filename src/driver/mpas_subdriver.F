@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -24,13 +24,14 @@ module mpas_subdriver
  
       implicit none
 
-      real (kind=RKIND) :: dt
       character(len=StrKIND) :: timeStamp
+      integer :: ierr
 
       !
       ! Initialize infrastructure
       !
       call mpas_framework_init(dminfo, domain)
+      call mpas_core_setup_packages(ierr)
 
       call mpas_timer_start("total time")
       call mpas_timer_start("initialize")

@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -37,27 +37,28 @@ module ocn_gm
 
 contains
 
-   subroutine ocn_gm_compute_uBolus(s, grid)!{{{
+   subroutine ocn_gm_compute_uBolus(state, diagnostics, mesh)!{{{
       implicit none
-      type(state_type), intent(inout)        :: s
-      type(mesh_type), intent(in)            :: grid
+      type(state_type), intent(inout)        :: state !< Input/Output: State information
+      type(diagnostics_type), intent(inout)  :: diagnostics !< Input/Output: Diagnostics information
+      type(mesh_type), intent(in)            :: mesh !< Input: Mesh information
 
       real(kind=RKIND), dimension(:,:), pointer :: uBolusGM, hEddyFlux, layerThicknessEdge
 
       integer, dimension(:), pointer   :: maxLevelEdgeTop
       integer                          :: k, iEdge, nEdges
 
-      uBolusGM         => s % uBolusGM % array
-      layerThicknessEdge => s % layerThicknessEdge % array
-      hEddyFlux      => s % hEddyFlux % array
+      uBolusGM           => diagnostics % uBolusGM % array
+      hEddyFlux          => diagnostics % hEddyFlux % array
+      layerThicknessEdge => diagnostics % layerThicknessEdge % array
 
-      maxLevelEdgeTop => grid % maxLevelEdgeTop % array
+      maxLevelEdgeTop => mesh % maxLevelEdgeTop % array
 
-      nEdges = grid % nEdges
+      nEdges = mesh % nEdges
 
-      call ocn_gm_compute_hEddyFlux(s, grid)
+      call ocn_gm_compute_hEddyFlux(state, diagnostics, mesh)
 
-      if (config_vert_coord_movement .EQ. 'isopycnal') then
+      if (config_vert_coord_movement .EQ. 'impermeable_interfaces') then
 
          do iEdge = 1, nEdges
             do k = 1, maxLevelEdgeTop(iEdge)
@@ -67,17 +68,18 @@ contains
 
       else
 
-         ! Nothing for now for all other grid types (zlevel, zstar, ztilde)
+         ! Nothing for now for all other mesh types (zlevel, zstar, ztilde)
          uBolusGM(:,:) = 0.0
 
       end if
 
    end subroutine ocn_gm_compute_uBolus!}}}
 
-   subroutine ocn_gm_compute_hEddyFlux(s, grid)!{{{
+   subroutine ocn_gm_compute_hEddyFlux(state, diagnostics, mesh)!{{{
       implicit none
-      type(state_type), intent(inout)     :: s
-      type(mesh_type), intent(in)         :: grid
+      type(state_type), intent(inout)     :: state !< Input/Output: State information
+      type(diagnostics_type), intent(in)  :: diagnostics !< Input: Diagnostics information
+      type(mesh_type), intent(in)         :: mesh !< Input: Mesh information
 
       real(kind=RKIND), dimension(:,:), pointer  :: hEddyFlux, layerThickness
       real(kind=RKIND), dimension(:), pointer    :: dcEdge
@@ -85,18 +87,18 @@ contains
       integer, dimension(:), pointer             :: maxLevelEdgeTop
       integer                                    :: k, cell1, cell2, iEdge, nEdges
 
-      hEddyFlux      => s % hEddyFlux % array
-      layerThickness => s % layerThickness % array
+      hEddyFlux      => diagnostics % hEddyFlux % array
+      layerThickness => state % layerThickness % array
 
-      dcEdge         => grid % dcEdge % array
-      cellsOnEdge    => grid % cellsOnEdge % array
-      maxLevelEdgeTop => grid % maxLevelEdgeTop % array
+      dcEdge         => mesh % dcEdge % array
+      cellsOnEdge    => mesh % cellsOnEdge % array
+      maxLevelEdgeTop => mesh % maxLevelEdgeTop % array
 
-      nEdges = grid % nEdges
+      nEdges = mesh % nEdges
 
       hEddyFlux(:,:) = 0.0
 
-      if (config_vert_coord_movement .EQ. 'isopycnal') then
+      if (config_vert_coord_movement .EQ. 'impermeable_interfaces') then
             do iEdge = 1,nEdges
                cell1 = cellsOnEdge(1,iEdge)
                cell2 = cellsOnEdge(2,iEdge)
@@ -106,38 +108,38 @@ contains
             end do
       else
 
-         !Nothing for now for all other grid types (zlevel, zstar, ztilde)
+         !Nothing for now for all other mesh types (zlevel, zstar, ztilde)
 
       end if
                   
    end subroutine ocn_gm_compute_hEddyFlux!}}}
 
-   subroutine ocn_get_h_kappa(s, grid)!{{{
+   subroutine ocn_get_h_kappa(diagnostics, mesh)!{{{
 
-      type (state_type), intent(inout) :: s
-      type (mesh_type), intent(in) :: grid
+      type (diagnostics_type), intent(inout) :: diagnostics !< Input/Output: Diagnostics information
+      type (mesh_type), intent(in) :: mesh !< Input: Mesh information
 
-      real(kind=RKIND), dimension(:,:), pointer    :: h_kappa
+      real(kind=RKIND), dimension(:,:), pointer    :: hKappa
 
 
-      h_kappa  => s % h_kappa % array
+      hKappa  => diagnostics % hKappa % array
 
-      h_kappa(:,:) = config_h_kappa
+      hKappa(:,:) = config_h_kappa
 
 
    end subroutine ocn_get_h_kappa!}}}
 
-   subroutine ocn_get_h_kappa_q(s, grid)!{{{
+   subroutine ocn_get_h_kappa_q(diagnostics, mesh)!{{{
 
-      type (state_type), intent(inout) :: s
-      type (mesh_type), intent(in) :: grid
+      type (diagnostics_type), intent(inout) :: diagnostics !< Input/Output: Diagnostics information
+      type (mesh_type), intent(in) :: mesh !< Input: Mesh information
 
-      real(kind=RKIND), dimension(:,:), pointer    :: h_kappa_q
+      real(kind=RKIND), dimension(:,:), pointer    :: hKappaQ
 
 
-      h_kappa_q  => s % h_kappa_q % array
+      hKappaQ  => diagnostics % hKappaQ % array
 
-      h_kappa_q(:,:) = config_h_kappa_q
+      hKappaQ(:,:) = config_h_kappa_q
 
 
    end subroutine ocn_get_h_kappa_q!}}}

@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -8,6 +8,7 @@
 module mpas_timekeeping
 
    use mpas_kind_types
+   use mpas_io_units
    use ESMF_BaseMod
    use ESMF_Stubs
    use ESMF_CalendarMod
@@ -123,9 +124,7 @@ module mpas_timekeeping
 
       character (len=*), intent(in) :: calendar 
 
-#ifdef MPAS_CESM
-      TheCalendar = defaultCal % Type % caltype - 1
-#else
+#ifndef MPAS_CESM
       if (trim(calendar) == 'gregorian') then
          TheCalendar = MPAS_GREGORIAN
          call ESMF_Initialize(defaultCalendar=ESMF_CAL_GREGORIAN)
@@ -136,7 +135,15 @@ module mpas_timekeeping
          TheCalendar = MPAS_360DAY
          call ESMF_Initialize(defaultCalendar=ESMF_CAL_360DAY)
       else
-         write(0,*) 'ERROR: mpas_timekeeping_init: Invalid calendar type'
+         write(stderrUnit,*) 'ERROR: mpas_timekeeping_init: Invalid calendar type'
+      end if
+#else
+      if (trim(calendar) == 'gregorian') then
+         TheCalendar = MPAS_GREGORIAN
+      else if (trim(calendar) == 'gregorian_noleap') then
+         TheCalendar = MPAS_GREGORIAN_NOLEAP
+      else
+         write(stderrUnit,*) 'ERROR: mpas_timekeeping_init: Invalid calendar type'
       end if
 #endif
 
@@ -172,7 +179,7 @@ module mpas_timekeeping
          if (present(stopTime)) then
             if (stopTime /= stop_time) then
                if (present(ierr)) ierr = 1   ! stopTime and runDuration are inconsistent
-               write(0,*) 'ERROR: MPAS_createClock: stopTime and runDuration are inconsistent'
+               write(stderrUnit,*) 'ERROR: MPAS_createClock: stopTime and runDuration are inconsistent'
                return
             end if
          end if
@@ -180,7 +187,7 @@ module mpas_timekeeping
          stop_time = stopTime
       else
          if (present(ierr)) ierr = 1   ! neither stopTime nor runDuration are specified
-         write(0,*) 'ERROR: MPAS_createClock: neither stopTime nor runDuration are specified'
+         write(stderrUnit,*) 'ERROR: MPAS_createClock: neither stopTime nor runDuration are specified'
          return
       end if
 
@@ -448,14 +455,14 @@ module mpas_timekeeping
          alarmPtr => clock % alarmListHead
          do while (associated(alarmPtr % next))
             if (alarmPtr % alarmID == alarmID) then
-               write(0,*) 'OOPS -- we have a duplicate alarmID', alarmID
+               write(stderrUnit,*) 'OOPS -- we have a duplicate alarmID', alarmID
                if (present(ierr)) ierr = 1
                return
             end if
             alarmPtr => alarmPtr % next
          end do
             if (alarmPtr % alarmID == alarmID) then
-               write(0,*) 'OOPS -- we have a duplicate alarmID', alarmID
+               write(stderrUnit,*) 'OOPS -- we have a duplicate alarmID', alarmID
                if (present(ierr)) ierr = 1
                return
             end if
@@ -530,8 +537,6 @@ module mpas_timekeeping
 
       type (MPAS_Alarm_type), pointer :: alarmPtr
 
-      type (MPAS_TimeInterval_type) :: alarmTimeInterval
-      type (MPAS_Time_type) :: alarmTime
       character (len=StrKIND) :: printString
 
       ierr = 0
@@ -539,20 +544,20 @@ module mpas_timekeeping
       alarmPtr => clock % alarmListHead
       do while (associated(alarmPtr))
          if (alarmPtr % alarmID == alarmID) then
-            write(0,*) 'ALARM ', alarmID
+            write(stderrUnit,*) 'ALARM ', alarmID
 
-            write(0,*) 'isRecurring', alarmPtr % isRecurring
+            write(stderrUnit,*) 'isRecurring', alarmPtr % isRecurring
             
-            write(0,*) 'isSet', alarmPtr % isSet
+            write(stderrUnit,*) 'isSet', alarmPtr % isSet
 
             call mpas_get_time(alarmPtr % ringTime, dateTimeString=printString, ierr=ierr)
-            write(0,*) 'ringTime', printString
+            write(stderrUnit,*) 'ringTime', printString
 
             call mpas_get_time(alarmPtr % prevRingTime, dateTimeString=printString, ierr=ierr)
-            write(0,*) 'prevRingTime', printString
+            write(stderrUnit,*) 'prevRingTime', printString
 
             call mpas_get_timeInterval(alarmPtr % ringTimeInterval, timeString=printString, ierr=ierr)
-            write(0,*) 'ringTimeInterval', printString
+            write(stderrUnit,*) 'ringTimeInterval', printString
             
             exit
          end if
@@ -742,7 +747,6 @@ module mpas_timekeeping
       type (MPAS_Time_type) :: previousRingTime
       type (MPAS_Time_type) :: negativeNeighborRingTime
       type (MPAS_Time_type) :: positiveNeighborRingTime
-      type (MPAS_TimeInterval_type) :: ringTimeInterval 
       type (MPAS_Alarm_type), pointer :: alarmPtr
 
       now = mpas_get_clock_time(clock, MPAS_NOW, ierr)
@@ -849,7 +853,7 @@ module mpas_timekeeping
          else if (size(subStrings) /= 1) then
             deallocate(subStrings)
             if (present(ierr)) ierr = 1
-            write(0,*) 'ERROR: Invalid DateTime string', dateTimeString
+            write(stderrUnit,*) 'ERROR: Invalid DateTime string', dateTimeString
             return
          end if
 
@@ -870,7 +874,7 @@ module mpas_timekeeping
             else
                deallocate(subStrings)
                if (present(ierr)) ierr = 1
-               write(0,*) 'ERROR: Invalid DateTime string (invalid time substring)', dateTimeString
+               write(stderrUnit,*) 'ERROR: Invalid DateTime string (invalid time substring)', dateTimeString
                return
             end if
 
@@ -885,7 +889,7 @@ module mpas_timekeeping
          else
             deallocate(subStrings)
             if (present(ierr)) ierr = 1
-            write(0,*) 'ERROR: Invalid DateTime string', dateTimeString
+            write(stderrUnit,*) 'ERROR: Invalid DateTime string', dateTimeString
             return
          end if
 
@@ -899,7 +903,7 @@ module mpas_timekeeping
          else
             deallocate(subStrings)
             if (present(ierr)) ierr = 1
-            write(0,*) 'ERROR: Invalid DateTime string (invalid date substring)', dateTimeString
+            write(stderrUnit,*) 'ERROR: Invalid DateTime string (invalid date substring)', dateTimeString
             return
          end if
 
@@ -914,13 +918,13 @@ module mpas_timekeeping
             if (present(MM)) then
                if (MM /= month) then
                   if (present(ierr)) ierr = 1
-                  write(0,*) 'ERROR: MPAS_setTime : DoY and MM are inconsistent - using DoY'
+                  write(stderrUnit,*) 'ERROR: MPAS_setTime : DoY and MM are inconsistent - using DoY'
                end if
             end if
             if (present(DD)) then
                if (DD /= day) then
                   if (present(ierr)) ierr = 1
-                  write(0,*) 'ERROR: MPAS_setTime : DoY and DD are inconsistent - using DoY'
+                  write(stderrUnit,*) 'ERROR: MPAS_setTime : DoY and DD are inconsistent - using DoY'
                end if
             end if
          else
@@ -928,7 +932,7 @@ module mpas_timekeeping
                month = MM
             else
                if (present(ierr)) ierr = 1
-               write(0,*) 'ERROR: MPAS_setTime : Neither DoY nor MM are specified'
+               write(stderrUnit,*) 'ERROR: MPAS_setTime : Neither DoY nor MM are specified'
                return
             end if
 
@@ -936,13 +940,13 @@ module mpas_timekeeping
                day = DD
             else
                if (present(ierr)) ierr = 1
-               write(0,*) 'ERROR: MPAS_setTime : Neither DoY nor DD are specified'
+               write(stderrUnit,*) 'ERROR: MPAS_setTime : Neither DoY nor DD are specified'
                return
             end if
          end if
 
          if (.not. isValidDate(YYYY,month,day)) then
-            write(0,*) 'ERROR: MPAS_setTime : Invalid date'
+            write(stderrUnit,*) 'ERROR: MPAS_setTime : Invalid date'
             return
          end if
 
@@ -1000,7 +1004,7 @@ module mpas_timekeeping
       integer, intent(out), optional :: ierr
 
       integer, parameter :: integerMaxDigits = 8
-      integer :: days, hours, minutes, seconds
+!      integer :: days, hours, minutes, seconds
       integer :: numerator, denominator, denominatorPower
       type (MPAS_TimeInterval_type) :: zeroInterval
 
@@ -1105,7 +1109,7 @@ module mpas_timekeeping
          else if (size(subStrings) /= 1) then
             deallocate(subStrings)
             if (present(ierr)) ierr = 1
-            write(0,*) 'ERROR: Invalid TimeInterval string', timeString
+            write(stderrUnit,*) 'ERROR: Invalid TimeInterval string ', trim(timeString)
             return
          end if
 
@@ -1123,7 +1127,7 @@ module mpas_timekeeping
          else
             deallocate(subStrings)
             if (present(ierr)) ierr = 1
-            write(0,*) 'ERROR: Invalid TimeInterval string', timeString
+            write(stderrUnit,*) 'ERROR: Invalid TimeInterval string ', trim(timeString)
             return
          end if
 
@@ -1137,7 +1141,7 @@ module mpas_timekeeping
          else
             deallocate(subStrings)
             if (present(ierr)) ierr = 1
-            write(0,*) 'ERROR: Invalid TimeInterval string (invalid time substring)', timeString
+            write(stderrUnit,*) 'ERROR: Invalid TimeInterval string (invalid time substring) ', trim(timeString)
             return
          end if
 
@@ -1158,9 +1162,8 @@ module mpas_timekeeping
 
       if (interval <= zeroInterval) then
          if (present(ierr)) ierr = 1   
-         write(0,*) 'ERROR: TimeInterval must be greater than 0', timeString !'ERROR: TimeInterval cannot be negative'
+         write(stderrUnit,*) 'ERROR: TimeInterval must be greater than zero: ', trim(timeString) !'ERROR: TimeInterval cannot be negative'
       end if
-      
 
       
    end subroutine mpas_set_timeInterval
@@ -1624,7 +1627,6 @@ module mpas_timekeeping
 
 
 end module mpas_timekeeping
-
 
 
 subroutine wrf_error_fatal(msg)

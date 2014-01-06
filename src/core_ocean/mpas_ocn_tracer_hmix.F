@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -78,7 +78,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_tracer_hmix_tend(grid, layerThicknessEdge, tracers, tend, err)!{{{
+   subroutine ocn_tracer_hmix_tend(mesh, layerThicknessEdge, tracers, tend, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -90,7 +90,7 @@ contains
          layerThicknessEdge    !< Input: thickness at edge
 
       type (mesh_type), intent(in) :: &
-         grid          !< Input: grid information
+         mesh          !< Input: mesh information
 
       real (kind=RKIND), dimension(:,:,:), intent(in) :: &
         tracers !< Input: tracer quantities
@@ -131,10 +131,10 @@ contains
       if(.not.tracerHmixOn) return
 
       call mpas_timer_start("del2", .false., del2Timer)
-      call ocn_tracer_hmix_del2_tend(grid, layerThicknessEdge, tracers, tend, err1)
+      call ocn_tracer_hmix_del2_tend(mesh, layerThicknessEdge, tracers, tend, err1)
       call mpas_timer_stop("del2", del2Timer)
       call mpas_timer_start("del4", .false., del4Timer)
-      call ocn_tracer_hmix_del4_tend(grid, layerThicknessEdge, tracers, tend, err2)
+      call ocn_tracer_hmix_del4_tend(mesh, layerThicknessEdge, tracers, tend, err2)
       call mpas_timer_stop("del4", del4Timer)
 
       err = ior(err1, err2)

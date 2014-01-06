@@ -12,7 +12,7 @@ physcore:
 	( cd physics; $(MAKE) all )
 	( mkdir libphys; cd libphys; ar -x ../physics/libphys.a )
 	( cd ../..; ln -sf ./src/core_atmosphere/physics/physics_wrf/files/*TBL .)
-	( cd ../..; ln -sf ./src/core_atmosphere/physics/physics_wrf/files/*DBL .)
+	( cd ../..; ln -sf ./src/core_atmosphere/physics/physics_wrf/files/*DATA* .)
 
 dycore:
 	( cd dynamics; $(MAKE) all PHYSICS="$(PHYSICS)" )
@@ -26,11 +26,15 @@ clean:
 	( cd physics; $(MAKE) clean )
 	( cd dynamics; $(MAKE) clean )
 	( cd ../..; rm -f *TBL )
-	( cd ../..; rm -f *DBL )
+	( cd ../..; rm -f *DATA* )
 	$(RM) -r libphys
 	$(RM) *.o *.mod *.f90 libdycore.a
 
 .F.o:
 	$(RM) $@ $*.mod
+ifeq "$(GEN_F90)" "true"
 	$(CPP) $(CPPFLAGS) $(PHYSICS) $(CPPINCLUDES) $< > $*.f90
 	$(FC) $(FFLAGS) -c $*.f90 $(FCINCLUDES) -I../framework -I../operators -I./physics -I./dynamics -I./physics/physics_wrf -I../external/esmf_time_f90
+else
+	$(FC) $(CPPFLAGS) $(PHYSICS) $(FFLAGS) -c $*.F $(CPPINCLUDES) $(FCINCLUDES) -I../framework -I../operators -I./physics -I./dynamics -I./physics/physics_wrf -I../external/esmf_time_f90
+endif

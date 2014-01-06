@@ -1,11 +1,11 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
 ! Additional copyright and license information can be found in the LICENSE file
 ! distributed with this code, or at http://mpas-dev.github.com/license.html
 !
-!=============================================================================================
+!==================================================================================================
  module mpas_atmphys_driver_gwdo
  use mpas_configure, only: len_disp => config_len_disp
  use mpas_grid_types
@@ -13,7 +13,7 @@
  use mpas_atmphys_constants
  use mpas_atmphys_vars
 
-!from wrf physics:
+!wrf physics:
  use module_bl_gwdo
 
  implicit none
@@ -24,11 +24,37 @@
 
  integer,private:: i,j,k
 
+
+!>\brief MPAS driver for parameterization of gravity wave drag over orography.
+!>\author Laura D. Fowler (send comments to laura@ucar.edu).
+!>\date 2013-05-01.
+!>
+!>\details
+!>
+!> subroutines in mpas_atmphys_driver_gwdo:
+!> ----------------------------------------
+!> allocate_gwdo  : allocate local arrays for parameterization of gravity wave drag.
+!> deallocate_gwdo: deallocate local arrays for parameterization of gravity wave drag.
+!> driver_gwdo    : main driver (called from subroutine physics_driver).
+!> gwdo_from_MPAS : initialize local arrays.
+!> gwdo_to_MPAS   : copy local arrays to MPAS arrays.
+!>
+!> WRF physics called from driver_gwdo:
+!> --------------------------- --------
+!>    * module_bl_gwdo       : parameterization of gravity wave drag over orography. 
+!>
+!> add-ons and modifications to sourcecode:
+!> ----------------------------------------
+!>    * removed the pre-processor option "do_hydrostatic_pressure" before call to subroutine gwdo. 
+!>      Laura D. Fowler (birch.ucar.edu) / 2013-05-29.
+!>    * changed the definition of dx_p to the mean distance between cell centers.
+!>      Laura D. Fowler (birch.mmm.ucar.edu) / 2013-08-23.
+
  contains
 
-!=============================================================================================
+!==================================================================================================
  subroutine allocate_gwdo
-!=============================================================================================
+!==================================================================================================
 
  if(.not.allocated(dx_p)    ) allocate(dx_p(ims:ime,jms:jme)    )
  if(.not.allocated(var2d_p) ) allocate(var2d_p(ims:ime,jms:jme) )
@@ -52,9 +78,9 @@
 
  end subroutine allocate_gwdo
 
-!=============================================================================================
+!==================================================================================================
  subroutine deallocate_gwdo
-!=============================================================================================
+!==================================================================================================
 
  if(allocated(dx_p)    ) deallocate(dx_p    )
  if(allocated(var2d_p) ) deallocate(var2d_p )
@@ -78,9 +104,9 @@
 
  end subroutine deallocate_gwdo
 
-!=============================================================================================
+!==================================================================================================
  subroutine gwdo_from_MPAS(mesh,sfc_input,diag_physics,tend_physics)
-!=============================================================================================
+!==================================================================================================
 
 !input arguments:
  type(mesh_type),intent(in):: mesh
@@ -88,17 +114,7 @@
  type(diag_physics_type),intent(in):: diag_physics
  type(tend_physics_type),intent(in):: tend_physics
 
-!local variables:
- integer:: iEdge
-
-!---------------------------------------------------------------------------------------------
-
- do j = jts,jte
- do i = its,ite
-    iEdge = mesh%nEdgesOnCell%array(i)
-    dx_p(i,j) = maxval(mesh%dcEdge%array(mesh%edgesOnCell%array(1:iEdge,i)))
- enddo
- enddo
+!--------------------------------------------------------------------------------------------------
 
  do j = jts,jte
  do i = its,ite
@@ -117,9 +133,10 @@
 
  do j = jts,jte
  do i = its,ite
-    kpbl_p(i,j)   = diag_physics % kpbl   % array(i)
-    dusfcg_p(i,j) = diag_physics % dusfcg % array(i)
-    dvsfcg_p(i,j) = diag_physics % dvsfcg % array(i)
+    dx_p(i,j)     = diag_physics % dcEdge_m % array(i)
+    kpbl_p(i,j)   = diag_physics % kpbl     % array(i)
+    dusfcg_p(i,j) = diag_physics % dusfcg   % array(i)
+    dvsfcg_p(i,j) = diag_physics % dvsfcg   % array(i)
  enddo
  enddo
 
@@ -136,15 +153,15 @@
 
  end subroutine gwdo_from_MPAS
  
-!=============================================================================================
+!==================================================================================================
  subroutine gwdo_to_MPAS(diag_physics,tend_physics)
-!=============================================================================================
+!==================================================================================================
 
 !inout arguments:
  type(diag_physics_type),intent(inout):: diag_physics
  type(tend_physics_type),intent(inout):: tend_physics
 
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
 
  do j = jts,jte
  do i = its,ite
@@ -176,9 +193,9 @@
 
  end subroutine gwdo_to_MPAS
  
-!=============================================================================================
+!==================================================================================================
  subroutine driver_gwdo(itimestep,mesh,sfc_input,diag_physics,tend_physics)
-!=============================================================================================
+!==================================================================================================
 
 !input arguments:
  type(mesh_type),intent(in):: mesh
@@ -193,18 +210,16 @@
  integer:: i,iCell,iEdge
  real(kind=RKIND),dimension(:),allocatable:: dx_max
 
-!--------------------------------------------------------------------------------------------- 
+!--------------------------------------------------------------------------------------------------
  write(0,*)
  write(0,*) '--- enter subroutine driver_gwdo: dt_pbl=',dt_pbl
 
-!copy all MPAS arrays to rectanguler grid arrays:
+!copy MPAS arrays to local arrays:
  call gwdo_from_MPAS(mesh,sfc_input,diag_physics,tend_physics)
 
  gwdo_select: select case (trim(gwdo_scheme))
 
     case("ysu_gwdo")
-#if defined(do_hydrostatic_pressure)
-!... REARRANGED CALL USING HYDROSTATIC PRESSURE:
        call gwdo ( &
                   p3d       = pres_hydd_p , p3di      = pres2_hydd_p , pi3d    = pi_p      , &
                   u3d       = u_p         , v3d       = v_p          , t3d     = t_p       , & 
@@ -222,22 +237,17 @@
                   ims = ims , ime = ime , jms = jms , jme = jme , kms = kms , kme = kme ,    &
                   its = its , ite = ite , jts = jts , jte = jte , kts = kts , kte = kte      &
                  )
-#else
-!... REARRANGED CALL:
-       call gwdo ( &
-                 )
-#endif
 
      case default
 
  end select gwdo_select
 
-!copy all arrays back to the MPAS grid:
+!copy local arrays to MPAS grid:
  call gwdo_to_MPAS(diag_physics,tend_physics)
  write(0,*) '--- end subroutine driver_gwdo'
 
  end subroutine driver_gwdo
 
-!=============================================================================================
+!==================================================================================================
  end module mpas_atmphys_driver_gwdo
-!=============================================================================================
+!==================================================================================================

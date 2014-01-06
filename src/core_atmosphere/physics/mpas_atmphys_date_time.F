@@ -1,13 +1,12 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
 ! Additional copyright and license information can be found in the LICENSE file
 ! distributed with this code, or at http://mpas-dev.github.com/license.html
 !
-!=============================================================================================
+!==================================================================================================
  module mpas_atmphys_date_time
-
  use mpas_kind_types
 
  implicit none
@@ -18,14 +17,36 @@
 
  character(len=StrKIND),public:: current_date
 
+
+!>\brief MPAS utility module for time management.
+!>\author Laura D. Fowler (send comments to laura@ucar.edu).
+!>\date 2013-05-01.
+!>
+!>\details
+!> subroutines called in mpas_atmphys_date_time:
+!> ---------------------------------------------
+!> get_julgmt            : calculates current julian day.
+!> split_date_char       : used to extract actual date from input string.
+!> monthly_interp_to_date: interpolates monthly-mean data to current julian day.
+!> monthly_min_max       : looks for min and max values from monthly-mean data set (greenfrac,...)
+!>
+!> add-ons and modifications to sourcecode:
+!> ----------------------------------------
+!>    * in subroutine monthly_interp_to_date, change the length of variables day15 and mon from
+!>      StrKIND to 2 to input correctly the reference date to subroutine get_julgmt_date.
+!>    * in subroutines get_julgmt_date and split_date_char, changed the declaration of date_str
+!>      from StrKIND to *.
+!>      Laura D. Fowler (birch.mmm.ucar.edu) / 2013-10-18.
+
+
  contains
 
-!=============================================================================================
+!==================================================================================================
  subroutine get_julgmt(date_str,julyr,julday,gmt)
-!=============================================================================================
+!==================================================================================================
 
 !input arguments:
- character(len=StrKIND),intent(in):: date_str
+ character(len=*),intent(in):: date_str
 
 !output arguments:
  integer,intent(out):: julyr
@@ -39,7 +60,7 @@
  integer,dimension(12):: mmd
  data mmd /31,28,31,30,31,30,31,31,30,31,30,31/
 
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
 
  call split_date_char(date_str,ny,nm,nd,nh,ni,ns,nt)
 
@@ -56,17 +77,17 @@
 
  end subroutine get_julgmt
 
-!=============================================================================================
+!==================================================================================================
  subroutine split_date_char(date,century_year,month,day,hour,minute,second,ten_thousandth)
-!=============================================================================================
+!==================================================================================================
    
 !input arguments:
- character(len=StrKIND),intent(in):: date
+ character(len=*),intent(in):: date
 
 !output arguments:
  integer,intent(out):: century_year,month,day,hour,minute,second,ten_thousandth
 
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
 
  read(date,fmt='(    I4)') century_year
  read(date,fmt='( 5X,I2)') month
@@ -78,9 +99,9 @@
    
  end subroutine split_date_char
 
-!=============================================================================================
+!==================================================================================================
  subroutine monthly_interp_to_date(npoints,date_str,field_in,field_out)
-!=============================================================================================
+!==================================================================================================
 
 !input arguments:
  character(len=StrKIND),intent(in):: date_str
@@ -91,7 +112,7 @@
  real(kind=RKIND),intent(out),dimension(npoints):: field_out
 
 !local variables:
- character(len=StrKIND):: day15,mon
+ character(len=2):: day15,mon
 
  integer:: l,n
  integer:: julyr,julday,int_month,month1,month2
@@ -100,11 +121,11 @@
 
  real(kind=RKIND):: gmt
 
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
 
 !write(0,*)
 !write(0,*) '--- enter subroutine monthly_interp_to_date:'
-!write(0,*) '--- current_date  = ',date_str
+!write(0,*) '--- current_date  = ',trim(date_str)
 
  write(day15,fmt='(I2.2)') 15
  do l = 1 , 12
@@ -154,9 +175,9 @@
 
  end subroutine monthly_interp_to_date
 
-!=============================================================================================
+!==================================================================================================
  subroutine monthly_min_max(npoints,field_in,field_min,field_max)
-!=============================================================================================
+!==================================================================================================
 
 !input arguments:
  integer,intent(in):: npoints
@@ -169,7 +190,7 @@
  integer:: n,nn
  real(kind=RKIND):: minner,maxxer
 
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
  
  do n = 1, npoints
     minner = field_in(1,n)
@@ -190,6 +211,6 @@
 
  end subroutine monthly_min_max
 
-!=============================================================================================
+!==================================================================================================
  end module mpas_atmphys_date_time
-!=============================================================================================
+!==================================================================================================

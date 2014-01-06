@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -15,7 +15,7 @@ module mpas_io_input
    use mpas_configure
    use mpas_timekeeping
    use mpas_io_streams
-
+   use mpas_io_units
 
    integer, parameter :: STREAM_INPUT=1, STREAM_SFC=2, STREAM_RESTART=3
 
@@ -107,7 +107,7 @@ module mpas_io_input
       if (config_do_restart) then
         ! this get followed by set is to ensure that the time is in standard format
         if(trim(config_start_time) == 'file') then
-          open(22,file='restart_timestamp',form='formatted',status='old')
+          open(22,file=trim(config_restart_timestamp_name),form='formatted',status='old')
           read(22,*) restartTimeStamp
           close(22)
 
@@ -115,7 +115,7 @@ module mpas_io_input
           restartTimeStamp = config_start_time
         end if
 
-        write(0,*) 'RestartTimeStamp ', trim(restartTimeStamp)
+        write(stderrUnit,*) 'RestartTimeStamp ', trim(restartTimeStamp)
         call mpas_set_time(curr_time=startTime, dateTimeString=restartTimeStamp)
         call mpas_get_time(curr_time=startTime, dateTimeString=timeStamp)
         call mpas_insert_string_suffix(trim(config_restart_name), timeStamp, filename)
@@ -128,15 +128,15 @@ module mpas_io_input
       end if
       inputHandle = MPAS_io_open(trim(input_obj % filename), MPAS_IO_READ, MPAS_IO_PNETCDF, ierr)
       if (ierr /= MPAS_IO_NOERR) then
-        write(0,*) ' '
+        write(stderrUnit,*) ' '
         if (input_obj % stream == STREAM_RESTART) then
-          write(0,*) 'Error opening restart file ''', trim(input_obj % filename), ''''
+          write(stderrUnit,*) 'Error opening restart file ''', trim(input_obj % filename), ''''
         else if (input_obj % stream == STREAM_INPUT) then
-          write(0,*) 'Error opening input file ''', trim(input_obj % filename), ''''
+          write(stderrUnit,*) 'Error opening input file ''', trim(input_obj % filename), ''''
         else if (input_obj % stream == STREAM_SFC) then
-          write(0,*) 'Error opening sfc file ''', trim(input_obj % filename), ''''
+          write(stderrUnit,*) 'Error opening sfc file ''', trim(input_obj % filename), ''''
         end if
-        write(0,*) ' '
+        write(stderrUnit,*) ' '
         call mpas_dmpar_abort(domain % dminfo)
       end if
 
@@ -228,8 +228,8 @@ module mpas_io_input
 
       call MPAS_readStreamAtt(input_obj % io_stream, 'sphere_radius', r_sphere_radius, ierr)
       if (ierr /= MPAS_STREAM_NOERR) then
-        write(0,*) 'Warning: Attribute sphere_radius not found in '//trim(input_obj % filename)
-        write(0,*) '   Setting sphere_radius to 1.0'
+        write(stderrUnit,*) 'Warning: Attribute sphere_radius not found in '//trim(input_obj % filename)
+        write(stderrUnit,*) '   Setting sphere_radius to 1.0'
         domain % blocklist % mesh % sphere_radius = 1.0
       else
         domain % blocklist % mesh % sphere_radius = r_sphere_radius
@@ -237,8 +237,8 @@ module mpas_io_input
 
       call MPAS_readStreamAtt(input_obj % io_stream, 'on_a_sphere', c_on_a_sphere, ierr)
       if (ierr /= MPAS_STREAM_NOERR) then
-        write(0,*) 'Warning: Attribute on_a_sphere not found in '//trim(input_obj % filename)
-        write(0,*) '   Setting on_a_sphere to ''YES'''
+        write(stderrUnit,*) 'Warning: Attribute on_a_sphere not found in '//trim(input_obj % filename)
+        write(stderrUnit,*) '   Setting on_a_sphere to ''YES'''
         domain % blocklist % mesh % on_a_sphere = .true.
       else
         if (index(c_on_a_sphere, 'YES') /= 0) then
@@ -248,10 +248,11 @@ module mpas_io_input
         end if
       end if
 
+#ifndef MPAS_CESM
       call MPAS_readStreamAtt(input_obj % io_stream, 'history', domain % history, ierr)
       if (ierr /= MPAS_STREAM_NOERR) then
-        write(0,*) 'Warning: Attribute History not found in '//trim(input_obj % filename)
-        write(0,*) '   Setting History to '''''
+        write(stderrUnit,*) 'Warning: Attribute History not found in '//trim(input_obj % filename)
+        write(stderrUnit,*) '   Setting History to '''''
         domain % history = ""
       else
         ! Remove C String NULL characters, replace C String newlines with semicolons
@@ -263,6 +264,9 @@ module mpas_io_input
           end if
         end do
       end if
+#else
+      domain % history = "cesm_run"
+#endif
 
       block_ptr => domain % blocklist % next
       do while (associated(block_ptr))
@@ -286,17 +290,17 @@ module mpas_io_input
         !
         input_obj % time = MPAS_seekStream(input_obj % io_stream, restartTimeStamp, MPAS_STREAM_EXACT_TIME, timeStamp, ierr)
         if (ierr == MPAS_IO_ERR) then
-          write(0,*) 'Error: restart file '//trim(filename)//' did not contain time '//trim(restartTimeStamp)
+          write(stderrUnit,*) 'Error: restart file '//trim(filename)//' did not contain time '//trim(restartTimeStamp)
           call mpas_dmpar_abort(domain % dminfo)
         end if
 
 !       input_obj % time = MPAS_seekStream(input_obj % io_stream, config_start_time, MPAS_STREAM_EXACT_TIME, timeStamp, ierr)
 !       if (ierr == MPAS_IO_ERR) then
-!         write(0,*) 'Error: restart file '//trim(filename)//' did not contain time '//trim(config_start_time)
+!         write(stderrUnit,*) 'Error: restart file '//trim(filename)//' did not contain time '//trim(config_start_time)
 !         call mpas_dmpar_abort(domain % dminfo)
 !       end if
-!write(0,*) 'MGD DEBUGGING time = ', input_obj % time
-        write(0,*) 'Restarting model from time ', trim(timeStamp)
+!write(stderrUnit,*) 'MGD DEBUGGING time = ', input_obj % time
+        write(stderrUnit,*) 'Restarting model from time ', trim(timeStamp)
       end if
 
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
@@ -418,15 +422,15 @@ module mpas_io_input
  
       call MPAS_createStream(input_obj % io_stream, trim(input_obj % filename), MPAS_IO_PNETCDF, MPAS_IO_READ, 1, nferr)
       if (nferr /= MPAS_STREAM_NOERR) then
-         write(0,*) ' '
+         write(stderrUnit,*) ' '
          if (input_obj % stream == STREAM_RESTART) then
-            write(0,*) 'Error opening restart file ''', trim(input_obj % filename), ''''
+            write(stderrUnit,*) 'Error opening restart file ''', trim(input_obj % filename), ''''
          else if (input_obj % stream == STREAM_INPUT) then
-            write(0,*) 'Error opening input file ''', trim(input_obj % filename), ''''
+            write(stderrUnit,*) 'Error opening input file ''', trim(input_obj % filename), ''''
          else if (input_obj % stream == STREAM_SFC) then
-            write(0,*) 'Error opening sfc file ''', trim(input_obj % filename), ''''
+            write(stderrUnit,*) 'Error opening sfc file ''', trim(input_obj % filename), ''''
          end if
-         write(0,*) ' '
+         write(stderrUnit,*) ' '
          call mpas_dmpar_abort(dminfo)
       end if
 
@@ -501,9 +505,9 @@ module mpas_io_input
      call mpas_io_get_var(inputHandle, 'indexToCellID', indexToCellID % array, ierr)
      indexToCellID % dimSizes(1) = nReadCells
      indexToCellID % block => readingBlock
-     call mpas_dmpar_init_mulithalo_exchange_list(indexToCellID % sendList, nHalos)
-     call mpas_dmpar_init_mulithalo_exchange_list(indexToCellID % recvList, nHalos)
-     call mpas_dmpar_init_mulithalo_exchange_list(indexToCellID % copyList, nHalos)
+     call mpas_dmpar_init_multihalo_exchange_list(indexToCellID % sendList, nHalos)
+     call mpas_dmpar_init_multihalo_exchange_list(indexToCellID % recvList, nHalos)
+     call mpas_dmpar_init_multihalo_exchange_list(indexToCellID % copyList, nHalos)
      nullify(indexToCellID % next)
    
 
@@ -627,9 +631,9 @@ module mpas_io_input
      call mpas_io_get_var(inputHandle, 'indexToEdgeID', indexToEdgeID % array, ierr)
      indexToEdgeID % dimSizes(1) = nREadEdges
      indexToEdgeID % block => readingBlock
-     call mpas_dmpar_init_mulithalo_exchange_list(indexToEdgeID % sendList, nHalos+1)
-     call mpas_dmpar_init_mulithalo_exchange_list(indexToEdgeID % recvList, nHalos+1)
-     call mpas_dmpar_init_mulithalo_exchange_list(indexToEdgeID % copyList, nHalos+1)
+     call mpas_dmpar_init_multihalo_exchange_list(indexToEdgeID % sendList, nHalos+1)
+     call mpas_dmpar_init_multihalo_exchange_list(indexToEdgeID % recvList, nHalos+1)
+     call mpas_dmpar_init_multihalo_exchange_list(indexToEdgeID % copyList, nHalos+1)
      nullify(indexToEdgeID % next)
    
    
@@ -692,9 +696,9 @@ module mpas_io_input
      call mpas_io_get_var(inputHandle, 'indexToVertexID', indexToVertexID % array, ierr)
      indexToVertexID % dimSizes(1) = nReadVertices
      indexToVertexID % block => readingBlock
-     call mpas_dmpar_init_mulithalo_exchange_list(indexToVertexID % sendList, nHalos+1)
-     call mpas_dmpar_init_mulithalo_exchange_list(indexToVertexID % recvList, nHalos+1)
-     call mpas_dmpar_init_mulithalo_exchange_list(indexToVertexID % copyList, nHalos+1)
+     call mpas_dmpar_init_multihalo_exchange_list(indexToVertexID % sendList, nHalos+1)
+     call mpas_dmpar_init_multihalo_exchange_list(indexToVertexID % recvList, nHalos+1)
+     call mpas_dmpar_init_multihalo_exchange_list(indexToVertexID % copyList, nHalos+1)
      nullify(indexToVertexID % next)
    
    

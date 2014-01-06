@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -390,5 +390,31 @@ module mpas_core
       end if
 
    end subroutine compute_mesh_scaling
+
+!***********************************************************************
+!
+!  routine mpas_core_setup_packages
+!
+!> \brief   Pacakge setup routine
+!> \author  Doug Jacobsen
+!> \date    September 2011
+!> \details 
+!>  This routine is intended to correctly configure the packages for this MPAS
+!>   core. It can use any Fortran logic to properly configure packages, and it
+!>   can also make use of any namelist options. All variables in the model are
+!>   *not* allocated until after this routine is called.
+!
+!-----------------------------------------------------------------------
+   subroutine mpas_core_setup_packages(ierr)!{{{
+
+      use mpas_packages
+
+      implicit none
+
+      integer, intent(out) :: ierr
+
+      ierr = 0
+
+   end subroutine mpas_core_setup_packages!}}}
 
 end module mpas_core

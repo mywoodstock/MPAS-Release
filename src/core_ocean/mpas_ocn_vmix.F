@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -29,6 +29,7 @@ module ocn_vmix
    use ocn_vmix_coefs_const
    use ocn_vmix_coefs_tanh
    use ocn_vmix_coefs_rich
+   use ocn_vmix_cvmix
 
    implicit none
    private
@@ -80,7 +81,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_vmix_coefs(grid, s, d, err)!{{{
+   subroutine ocn_vmix_coefs(mesh, s, d, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -89,7 +90,7 @@ contains
       !-----------------------------------------------------------------
 
       type (mesh_type), intent(in) :: &
-         grid          !< Input: grid information
+         mesh          !< Input: mesh information
 
       !-----------------------------------------------------------------
       !
@@ -117,7 +118,7 @@ contains
       !
       !-----------------------------------------------------------------
 
-      integer :: err1, err2, err3
+      integer :: err1, err2, err3, err4
 
       !-----------------------------------------------------------------
       !
@@ -130,11 +131,14 @@ contains
       d % vertViscTopOfEdge % array = 0.0_RKIND
       d % vertDiffTopOfCell % array = 0.0_RKIND
 
-      call ocn_vmix_coefs_const_build(grid, s, d, err1)
-      call ocn_vmix_coefs_tanh_build(grid, s, d, err2)
-      call ocn_vmix_coefs_rich_build(grid, s, d, err3)
+      call ocn_vmix_coefs_const_build(mesh, s, d, err1)
+      call ocn_vmix_coefs_tanh_build(mesh, s, d, err2)
+      call ocn_vmix_coefs_rich_build(mesh, s, d, err3)
+      call ocn_vmix_coefs_cvmix_build(mesh, s, d, err4)
 
-      err = ior(err1, ior(err2, err3))
+      err = ior(err1, err2)
+      err = ior(err,  err3)
+      err = ior(err,  err4)
 
    !--------------------------------------------------------------------
 
@@ -153,7 +157,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_vel_vmix_tend_implicit(grid, dt, kineticEnergyCell, vertViscTopOfEdge, layerThickness, layerThicknessEdge, normalVelocity, err)!{{{
+   subroutine ocn_vel_vmix_tend_implicit(mesh, dt, kineticEnergyCell, vertViscTopOfEdge, layerThickness, layerThicknessEdge, normalVelocity, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -162,7 +166,7 @@ contains
       !-----------------------------------------------------------------
 
       type (mesh_type), intent(in) :: &
-         grid          !< Input: grid information
+         mesh          !< Input: mesh information
 
       real (kind=RKIND), dimension(:,:), intent(in) :: &
          kineticEnergyCell        !< Input: kinetic energy at cell
@@ -214,10 +218,10 @@ contains
 
       if(.not.velVmixOn) return
 
-      nEdges = grid % nEdges
-      nVertLevels = grid % nVertLevels
-      maxLevelEdgeTop => grid % maxLevelEdgeTop % array
-      cellsOnEdge => grid % cellsOnEdge % array
+      nEdges = mesh % nEdges
+      nVertLevels = mesh % nVertLevels
+      maxLevelEdgeTop => mesh % maxLevelEdgeTop % array
+      cellsOnEdge => mesh % cellsOnEdge % array
 
       allocate(A(nVertLevels),B(nVertLevels),C(nVertLevels),velTemp(nVertLevels)) 
       A(1)=0
@@ -287,7 +291,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_tracer_vmix_tend_implicit(grid, dt, vertDiffTopOfCell, layerThickness, tracers, err)!{{{
+   subroutine ocn_tracer_vmix_tend_implicit(mesh, dt, vertDiffTopOfCell, layerThickness, tracers, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -296,7 +300,7 @@ contains
       !-----------------------------------------------------------------
 
       type (mesh_type), intent(in) :: &
-         grid          !< Input: grid information
+         mesh          !< Input: mesh information
 
       real (kind=RKIND), dimension(:,:), intent(in) :: &
          vertDiffTopOfCell !< Input: vertical mixing coefficients
@@ -341,10 +345,10 @@ contains
 
       if(.not.tracerVmixOn) return
 
-      nCells = grid % nCells
-      nVertLevels = grid % nVertLevels
+      nCells = mesh % nCells
+      nVertLevels = mesh % nVertLevels
       num_tracers = size(tracers, dim=1)
-      maxLevelCell => grid % maxLevelCell % array
+      maxLevelCell => mesh % maxLevelCell % array
 
       allocate(A(nVertLevels),B(nVertLevels),C(nVertLevels),tracersTemp(num_tracers,nVertLevels))
 
@@ -398,9 +402,9 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_vmix_implicit(dt, grid, diagnostics, state, err)!{{{
+   subroutine ocn_vmix_implicit(dt, mesh, diagnostics, state, err)!{{{
       real (kind=RKIND), intent(in) :: dt
-      type (mesh_type), intent(in) :: grid
+      type (mesh_type), intent(in) :: mesh
       type (diagnostics_type), intent(inout) :: diagnostics
       type (state_type), intent(inout) :: state
       integer, intent(out) :: err
@@ -412,29 +416,29 @@ contains
 
       err = 0
 
-      normalVelocity => state % normalVelocity % array
-      tracers     => state % tracers % array
-      layerThickness  => state % layerThickness % array
-      layerThicknessEdge      => state % layerThicknessEdge % array
-      kineticEnergyCell     => state % kineticEnergyCell % array
-      vertViscTopOfEdge => diagnostics % vertViscTopOfEdge % array
-      vertDiffTopOfCell => diagnostics % vertDiffTopOfCell % array
-      maxLevelCell    => grid % maxLevelCell % array
+      normalVelocity     => state % normalVelocity % array
+      tracers            => state % tracers % array
+      layerThickness     => state % layerThickness % array
+      kineticEnergyCell  => diagnostics % kineticEnergyCell % array
+      layerThicknessEdge => diagnostics % layerThicknessEdge % array
+      vertViscTopOfEdge  => diagnostics % vertViscTopOfEdge % array
+      vertDiffTopOfCell  => diagnostics % vertDiffTopOfCell % array
+      maxLevelCell       => mesh % maxLevelCell % array
                
-      nCells      = grid % nCells
+      nCells      = mesh % nCells
 
-      call ocn_vmix_coefs(grid, state, diagnostics, err)
+      call ocn_vmix_coefs(mesh, state, diagnostics, err)
 
       !
       !  Implicit vertical solve for momentum
       !
-      call ocn_vel_vmix_tend_implicit(grid, dt, kineticEnergyCell, vertViscTopOfEdge, layerThickness, layerThicknessEdge, normalVelocity, err)
+      call ocn_vel_vmix_tend_implicit(mesh, dt, kineticEnergyCell, vertViscTopOfEdge, layerThickness, layerThicknessEdge, normalVelocity, err)
 
       !
       !  Implicit vertical solve for tracers
       !
 
-      call ocn_tracer_vmix_tend_implicit(grid, dt, vertDiffTopOfCell, layerThickness, tracers, err)
+      call ocn_tracer_vmix_tend_implicit(mesh, dt, vertDiffTopOfCell, layerThickness, tracers, err)
 
    end subroutine ocn_vmix_implicit!}}}
 
@@ -452,7 +456,7 @@ contains
 !-----------------------------------------------------------------------
 
 
-   subroutine ocn_vmix_init(err)!{{{
+   subroutine ocn_vmix_init(domain, err)!{{{
 
    !--------------------------------------------------------------------
 
@@ -462,9 +466,11 @@ contains
       !
       !-----------------------------------------------------------------
 
+      type (domain_type), intent(inout) :: domain !< Input/Output: domain information
+
       integer, intent(out) :: err !< Output: error flag
 
-      integer :: err1, err2, err3
+      integer :: err1, err2, err3, err4
 
       err = 0
 
@@ -477,9 +483,13 @@ contains
       call ocn_vmix_coefs_const_init(err1)
       call ocn_vmix_coefs_tanh_init(err2)
       call ocn_vmix_coefs_rich_init(err3)
+      call ocn_vmix_cvmix_init(domain,err4)
 
-      err = ior(err1, ior(err2, err3))
+      err = ior(err1, err2)
+      err = ior(err,  err3)
+      err = ior(err,  err4)
 
+      write(6,*) 'ocn_vmix_init complete'
    !--------------------------------------------------------------------
 
    end subroutine ocn_vmix_init!}}}

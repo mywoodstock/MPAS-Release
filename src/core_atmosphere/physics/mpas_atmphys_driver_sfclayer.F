@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -12,7 +12,7 @@
  use mpas_atmphys_constants
  use mpas_atmphys_vars
 
-!from wrf physics:
+!wrf physics:
  use module_sf_sfclay
 
  implicit none
@@ -30,13 +30,43 @@
 
  integer,private:: i,j
 
+
+!>\brief MPAS driver for parameterization of the surface layer.
+!>\author Laura D. Fowler (send comments to laura@ucar.edu).
+!>\date 2013-05-01.
+!>
+!>\details
+!>
+!> subroutines in mpas_atmphys_driver_sfclayer:
+!> --------------------------------------------
+!> allocate_sfclayer    : allocate local arrays for parameterization of surface layer.
+!> deallocate_sfclayer  : deallocate local arrays for parameterization of surface layer.
+!> init_sfclayer        : initialization of individual surface layer schemes.
+!> driver_sfclayer      : main driver (called from subroutine physics_driver).
+!> sfclayer_from_MPAS   : initialize local arrays.
+!> sfclayer_to_MPAS     : copy local arrays to MPAS arrays.
+!>
+!> WRF physics called from driver_sfclayer:
+!> ----------------------------------------
+!>    * module_sf_sfclay: Monin-Obukhov surface layer scheme.
+!>
+!> add-ons and modifications to sourcecode:
+!> ----------------------------------------
+!>    * removed the pre-processor option "do_hydrostatic_pressure" before call to the subroutine
+!>      sfclay.
+!>      Laura D. Fowler (birch.mmm.ucar.edu) / 2013-05-29.
+!>    * updated the definition of the horizontal resolution to the actual mean distance between
+!>      cell centers.
+!>      Laura D. Fowler (birch.mmm.ucar.edu) / 2013-08-23.
+
+
  contains
 
 !==================================================================================================
  subroutine allocate_sfclayer
 !==================================================================================================
 
- if(.not.allocated(area_p)   ) allocate(area_p(ims:ime,jms:jme)   )
+ if(.not.allocated(dx_p)     ) allocate(dx_p(ims:ime,jms:jme)     )
  if(.not.allocated(br_p)     ) allocate(br_p(ims:ime,jms:jme)     )
  if(.not.allocated(cd_p)     ) allocate(cd_p(ims:ime,jms:jme)     )
  if(.not.allocated(cda_p)    ) allocate(cda_p(ims:ime,jms:jme)    )
@@ -82,7 +112,7 @@
  subroutine deallocate_sfclayer
 !==================================================================================================
 
- if(allocated(area_p)   ) deallocate(area_p   )
+ if(allocated(dx_p)     ) deallocate(dx_p     )
  if(allocated(br_p)     ) deallocate(br_p     )
  if(allocated(cd_p)     ) deallocate(cd_p     )
  if(allocated(cda_p)    ) deallocate(cda_p    )
@@ -138,9 +168,9 @@
  do j = jts,jte
  do i = its,ite
     !input variables:
-    area_p(i,j)   = mesh % areaCell % array(i)
-    hpbl_p(i,j)   = diag_physics % hpbl   % array(i)
-    mavail_p(i,j) = diag_physics % mavail % array(i)
+    dx_p(i,j)     = diag_physics % dcEdge_m % array(i)
+    hpbl_p(i,j)   = diag_physics % hpbl     % array(i)
+    mavail_p(i,j) = diag_physics % mavail   % array(i)
     tsk_p(i,j)    = sfc_input    % skintemp % array(i)
     xland_p(i,j)  = sfc_input    % xland    % array(i)       
     !inout variables:
@@ -274,8 +304,6 @@
 
     case("monin_obukhov")
        dx = sqrt(maxval(mesh % areaCell % array))
-#if defined(do_hydrostatic_pressure)
-!... REARRANGED CALL USING HYDROSTATIC PRESSURE:
        call sfclay( &
                    p3d      = pres_hyd_p , psfc     = psfc_p     , t3d      = t_p        , &
                    u3d      = u_p        , v3d      = v_p        , qv3d     = qv_p       , &
@@ -296,51 +324,20 @@
                    svp2     = svp2       , svp3     = svp3       , svpt0    = svpt0      , &
                    ep1      = ep_1       , ep2      = ep_2       , karman   = karman     , &
                    eomeg    = eomeg      , stbolt   = stbolt     , P1000mb  = P0         , &
-                   areaCell = area_p     , ustm     = ustm_p     , ck       = ck_p       , & 
+                   dxCell   = dx_p       , ustm     = ustm_p     , ck       = ck_p       , & 
                    cka      = cka_p      , cd       = cd_p       , cda      = cda_p      , & 
                    isftcflx = isftcflx   , iz0tlnd  = iz0tlnd    ,                         &
                    scm_force_flux = scm_force_flux               ,                         & 
                    ids = ids , ide = ide , jds = jds , jde = jde , kds = kds , kde = kde , &
                    ims = ims , ime = ime , jms = jms , jme = jme , kms = kms , kme = kme , &
                    its = its , ite = ite , jts = jts , jte = jte , kts = kts , kte = kte   &
-                 )
-#else
-!... REARRANGED CALL:
-       call sfclay( &
-                   p3d      = pres_p     , psfc     = psfc_p     , t3d      = t_p        , &
-                   u3d      = u_p        , v3d      = v_p        , qv3d     = qv_p       , &
-                   dz8w     = dz_p       , cp       = cp         , g        = g          , &
-                   rovcp    = rcp        , R        = R_d        , xlv      = xlv        , & 
-                   chs      = chs_p      , chs2     = chs2_p     , cqs2     = cqs2_p     , &
-                   cpm      = cpm_p      , znt      = znt_p      , ust      = ust_p      , &
-                   pblh     = hpbl_p     , mavail   = mavail_p   , zol      = zol_p      , &
-                   mol      = mol_p      , regime   = regime_p   , psim     = psim_p     , &
-                   psih     = psih_p     , fm       = fm_p       , fh       = fh_p       , &
-                   xland    = xland_p    , hfx      = hfx_p      , qfx      = qfx_p      , &
-                   lh       = lh_p       , tsk      = tsk_p      , flhc     = flhc_p     , &
-                   flqc     = flqc_p     , qgh      = qgh_p      , qsfc     = qsfc_p     , &
-                   rmol     = rmol_p     , u10      = u10_p      , v10      = v10_p      , &
-                   th2      = th2m_p     , t2       = t2m_p      , q2       = q2_p       , &
-                   gz1oz0   = gz1oz0_p   , wspd     = wspd_p     , br       = br_p       , &
-                   isfflx   = isfflx     , dx       = dx         , svp1     = svp1       , &
-                   svp2     = svp2       , svp3     = svp3       , svpt0    = svpt0      , &
-                   ep1      = ep_1       , ep2      = ep_2       , karman   = karman     , &
-                   eomeg    = eomeg      , stbolt   = stbolt     , P1000mb  = P0         , &
-                   areaCell = area_p     , ustm     = ustm_p     , ck       = ck_p       , & 
-                   cka      = cka_p      , cd       = cd_p       , cda      = cda_p      , & 
-                   isftcflx = isftcflx   , iz0tlnd  = iz0tlnd    ,                         &
-                   scm_force_flux = scm_force_flux               ,                         & 
-                   ids = ids , ide = ide , jds = jds , jde = jde , kds = kds , kde = kde , &
-                   ims = ims , ime = ime , jms = jms , jme = jme , kms = kms , kme = kme , &
-                   its = its , ite = ite , jts = jts , jte = jte , kts = kts , kte = kte   &
-                 )
-#endif
+                  )
         
     case default
 
  end select sfclayer_select
 
-!copy all arrays back to the MPAS grid:
+!copy local arrays to MPAS grid:
  call sfclayer_to_MPAS(diag_physics)
 
  write(0,*) '--- end subroutine driver_sfclayer'

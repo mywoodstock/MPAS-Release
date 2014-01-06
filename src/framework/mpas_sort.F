@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -20,6 +20,7 @@
 module mpas_sort
 
    use mpas_kind_types
+   use mpas_io_units
 
    interface mpas_quicksort
       module procedure mpas_quicksort_1dint
@@ -123,7 +124,7 @@ module mpas_sort
       integer, intent(in) :: nArray !< Input: Array size
       integer, dimension(nArray), intent(inout) :: array !< Input/Output: Array to be sorted
 
-      integer :: i, j, top, l, r, pivot, s
+      integer :: i, top, l, r, pivot, s
       integer :: pivot_value
       integer, dimension(1) :: temp
       integer, dimension(1000) :: lstack, rstack
@@ -163,14 +164,14 @@ module mpas_sort
 
          if (s-1 > l) then
             top = top + 1
-if (top > 1000) write(0,*) 'Error: Quicksort exhausted its stack.'
+if (top > 1000) write(stderrUnit,*) 'Error: Quicksort exhausted its stack.'
             lstack(top) = l
             rstack(top) = s-1
          end if
 
          if (r > s+1) then
             top = top + 1
-if (top > 1000) write(0,*) 'Error: Quicksort exhausted its stack.'
+if (top > 1000) write(stderrUnit,*) 'Error: Quicksort exhausted its stack.'
             lstack(top) = s+1
             rstack(top) = r
          end if
@@ -196,7 +197,7 @@ if (top > 1000) write(0,*) 'Error: Quicksort exhausted its stack.'
       integer, intent(in) :: nArray !< Input: Array size
       real (kind=RKIND), dimension(nArray), intent(inout) :: array !< Input/Output: Array to be sorted
 
-      integer :: i, j, top, l, r, pivot, s
+      integer :: i, top, l, r, pivot, s
       real (kind=RKIND) :: pivot_value
       real (kind=RKIND), dimension(1) :: temp
       integer, dimension(1000) :: lstack, rstack
@@ -236,14 +237,14 @@ if (top > 1000) write(0,*) 'Error: Quicksort exhausted its stack.'
 
          if (s-1 > l) then
             top = top + 1
-if (top > 1000) write(0,*) 'Error: Quicksort exhausted its stack.'
+if (top > 1000) write(stderrUnit,*) 'Error: Quicksort exhausted its stack.'
             lstack(top) = l
             rstack(top) = s-1
          end if
 
          if (r > s+1) then
             top = top + 1
-if (top > 1000) write(0,*) 'Error: Quicksort exhausted its stack.'
+if (top > 1000) write(stderrUnit,*) 'Error: Quicksort exhausted its stack.'
             lstack(top) = s+1
             rstack(top) = r
          end if
@@ -269,7 +270,7 @@ if (top > 1000) write(0,*) 'Error: Quicksort exhausted its stack.'
       integer, intent(in) :: nArray !< Input: Array size
       integer, dimension(2,nArray), intent(inout) :: array !< Input/Output: Array to be sorted
 
-      integer :: i, j, top, l, r, pivot, s
+      integer :: i, top, l, r, pivot, s
       integer :: pivot_value
       integer, dimension(2) :: temp
       integer, dimension(1000) :: lstack, rstack
@@ -309,14 +310,14 @@ if (top > 1000) write(0,*) 'Error: Quicksort exhausted its stack.'
 
          if (s-1 > l) then
             top = top + 1
-if (top > 1000) write(0,*) 'Error: Quicksort exhausted its stack.'
+if (top > 1000) write(stderrUnit,*) 'Error: Quicksort exhausted its stack.'
             lstack(top) = l
             rstack(top) = s-1
          end if
 
          if (r > s+1) then
             top = top + 1
-if (top > 1000) write(0,*) 'Error: Quicksort exhausted its stack.'
+if (top > 1000) write(stderrUnit,*) 'Error: Quicksort exhausted its stack.'
             lstack(top) = s+1
             rstack(top) = r
          end if
@@ -342,7 +343,7 @@ if (top > 1000) write(0,*) 'Error: Quicksort exhausted its stack.'
       integer, intent(in) :: nArray !< Input: Array size
       real (kind=RKIND), dimension(2,nArray), intent(inout) :: array !< Input/Output: Array to be sorted
 
-      integer :: i, j, top, l, r, pivot, s
+      integer :: i, top, l, r, pivot, s
       real (kind=RKIND) :: pivot_value
       real (kind=RKIND), dimension(2) :: temp
       integer, dimension(1000) :: lstack, rstack
@@ -382,14 +383,14 @@ if (top > 1000) write(0,*) 'Error: Quicksort exhausted its stack.'
 
          if (s-1 > l) then
             top = top + 1
-if (top > 1000) write(0,*) 'Error: Quicksort exhausted its stack.'
+if (top > 1000) write(stderrUnit,*) 'Error: Quicksort exhausted its stack.'
             lstack(top) = l
             rstack(top) = s-1
          end if
 
          if (r > s+1) then
             top = top + 1
-if (top > 1000) write(0,*) 'Error: Quicksort exhausted its stack.'
+if (top > 1000) write(stderrUnit,*) 'Error: Quicksort exhausted its stack.'
             lstack(top) = s+1
             rstack(top) = r
          end if

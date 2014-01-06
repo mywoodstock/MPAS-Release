@@ -1,4 +1,4 @@
-MPAS-v1.5
+MPAS-v2.0
 ====
 
 The Model for Prediction Across Scales (MPAS) is a collaborative project for
@@ -27,6 +27,8 @@ For information about building and running each core, please refer to each
 core's user's guide, which can be found at the following web sites:
 
 [MPAS-Atmosphere](http://mpas-dev.github.io/atmosphere/atmosphere_download.html)
+
+[MPAS-Land Ice](http://mpas-dev.github.io/land_ice/download.html)
 
 [MPAS-Ocean](http://mpas-dev.github.io/ocean/releases.html)
 

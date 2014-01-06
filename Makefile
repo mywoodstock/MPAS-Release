@@ -98,16 +98,50 @@ ifort:
 	"USE_PAPI = $(USE_PAPI)" \
 	"CPPFLAGS = $(MODEL_FORMULATION) -D_MPI -DUNDERSCORE" )
 
+ifort-gcc:
+	( $(MAKE) all \
+	"FC_PARALLEL = mpif90" \
+	"CC_PARALLEL = mpicc" \
+	"FC_SERIAL = ifort" \
+	"CC_SERIAL = gcc" \
+	"FFLAGS_OPT = -real-size 64 -O3 -convert big_endian -FR" \
+	"CFLAGS_OPT = -O3" \
+	"LDFLAGS_OPT = -O3" \
+	"FFLAGS_DEBUG = -real-size 64 -g -convert big_endian -FR -CU -CB -check all -fpe0 -traceback" \
+	"CFLAGS_DEBUG = -g -traceback" \
+	"LDFLAGS_DEBUG = -g -fpe0 -traceback" \
+	"CORE = $(CORE)" \
+	"DEBUG = $(DEBUG)" \
+	"USE_PAPI = $(USE_PAPI)" \
+	"CPPFLAGS = $(MODEL_FORMULATION) -D_MPI -DUNDERSCORE" )
+
 gfortran:
 	( $(MAKE) all \
 	"FC_PARALLEL = mpif90" \
 	"CC_PARALLEL = mpicc" \
 	"FC_SERIAL = gfortran" \
 	"CC_SERIAL = gcc" \
-	"FFLAGS_OPT = -O3 -m64 -ffree-line-length-none -fdefault-real-8 -fconvert=big-endian -ffree-form" \
+	"FFLAGS_OPT = -O3 -m64 -ffree-line-length-none -fdefault-real-8 -fdefault-double-8 -fconvert=big-endian -ffree-form" \
 	"CFLAGS_OPT = -O3 -m64" \
 	"LDFLAGS_OPT = -O3 -m64" \
-	"FFLAGS_DEBUG = -g -m64 -ffree-line-length-none -fdefault-real-8 -fconvert=big-endian -ffree-form -fbounds-check -fbacktrace -ffpe-trap=invalid,zero,overflow" \
+	"FFLAGS_DEBUG = -g -m64 -ffree-line-length-none -fdefault-real-8 -fdefault-double-8 -fconvert=big-endian -ffree-form -fbounds-check -fbacktrace -ffpe-trap=invalid,zero,overflow" \
+	"CFLAGS_DEBUG = -g -m64" \
+	"LDFLAGS_DEBUG = -g -m64" \
+	"CORE = $(CORE)" \
+	"DEBUG = $(DEBUG)" \
+	"USE_PAPI = $(USE_PAPI)" \
+	"CPPFLAGS = $(MODEL_FORMULATION) -D_MPI -DUNDERSCORE" )
+
+gfortran-openmpi:
+	( $(MAKE) all \
+	"FC_PARALLEL = openmpif90" \
+	"CC_PARALLEL = openmpicc" \
+	"FC_SERIAL = gfortran" \
+	"CC_SERIAL = gcc" \
+	"FFLAGS_OPT = -O3 -m64 -ffree-line-length-none -fdefault-real-8 -fdefault-double-8 -fconvert=big-endian -ffree-form" \
+	"CFLAGS_OPT = -O3 -m64" \
+	"LDFLAGS_OPT = -O3 -m64" \
+	"FFLAGS_DEBUG = -g -m64 -ffree-line-length-none -fdefault-real-8 -fdefault-double-8 -fconvert=big-endian -ffree-form -fbounds-check -fbacktrace -ffpe-trap=invalid,zero,overflow" \
 	"CFLAGS_DEBUG = -g -m64" \
 	"LDFLAGS_DEBUG = -g -m64" \
 	"CORE = $(CORE)" \
@@ -208,12 +242,12 @@ CPPINCLUDES =
 FCINCLUDES = 
 LIBS = 
 ifneq ($(wildcard $(PIO)/lib), ) # Check for newer PIO version
-	CPPINCLUDES = -I../inc -I$(NETCDF)/include -I$(PIO)/include -I$(PNETCDF)/include
-	FCINCLUDES = -I../inc -I$(NETCDF)/include -I$(PIO)/include -I$(PNETCDF)/include
+	CPPINCLUDES = -I$(NETCDF)/include -I$(PIO)/include -I$(PNETCDF)/include
+	FCINCLUDES = -I$(NETCDF)/include -I$(PIO)/include -I$(PNETCDF)/include
 	LIBS = -L$(PIO)/lib -L$(PNETCDF)/lib -L$(NETCDF)/lib -lpio -lpnetcdf
 else
-	CPPINCLUDES = -I../inc -I$(NETCDF)/include -I$(PIO) -I$(PNETCDF)/include
-	FCINCLUDES = -I../inc -I$(NETCDF)/include -I$(PIO) -I$(PNETCDF)/include
+	CPPINCLUDES = -I$(NETCDF)/include -I$(PIO) -I$(PNETCDF)/include
+	FCINCLUDES = -I$(NETCDF)/include -I$(PIO) -I$(PNETCDF)/include
 	LIBS = -L$(PIO) -L$(PNETCDF)/lib -L$(NETCDF)/lib -lpio -lpnetcdf
 endif
 
@@ -225,7 +259,7 @@ endif # CHECK FOR NETCDF4
 LIBS += $(NCLIB)
 
 RM = rm -f
-CPP = cpp -C -P -traditional
+CPP = cpp -P -traditional
 RANLIB = ranlib
 
 
@@ -275,6 +309,13 @@ ifeq "$(TAU)" "true"
 else
 	LINKER=$(FC)
 	TAU_MESSAGE="TAU Hooks are off."
+endif
+
+ifeq "$(GEN_F90)" "true"
+	GEN_F90_MESSAGE="MPAS generated and was built with intermediate .f90 files."
+else
+	override GEN_F90=false
+	GEN_F90_MESSAGE="MPAS was built with .F files."
 endif
 
 
@@ -350,7 +391,8 @@ endif
                  CPPINCLUDES="$(CPPINCLUDES)" \
                  FCINCLUDES="$(FCINCLUDES)" \
                  CORE="$(CORE)"\
-                 AUTOCLEAN="$(AUTOCLEAN)"
+                 AUTOCLEAN="$(AUTOCLEAN)" \
+                 GEN_F90="$(GEN_F90)"
 	@echo "$(CORE)" > .mpas_core_$(CORE)
 	if [ -e src/$(CORE)_model ]; then mv src/$(CORE)_model .; fi
 	@echo ""
@@ -362,6 +404,7 @@ endif
 ifeq "$(AUTOCLEAN)" "true"
 	@echo $(AUTOCLEAN_MESSAGE)
 endif
+	@echo $(GEN_F90_MESSAGE)
 	@echo "*******************************************************************************"
 clean:
 	$(RM) .mpas_core_*
@@ -374,6 +417,7 @@ core_error:
 	@echo "     $(CORE) is not a valid core choice."
 	@echo "*******************************************************************************"
 	@echo ""
+	exit 1
 error: errmsg
 
 clean_core:
@@ -394,16 +438,19 @@ clean_core:
 	@echo ""
 	@echo "*******************************************************************************"
 	@echo ""
+	exit 1
 
 else # CORE IF
 
 all: error
 clean: errmsg
+	exit 1
 error: errmsg
 	@echo "************ ERROR ************"
 	@echo "No CORE specified. Quitting."
 	@echo "************ ERROR ************"
 	@echo ""
+	exit 1
 
 endif # CORE IF
 
@@ -425,8 +472,12 @@ errmsg:
 	@echo "    USE_PAPI=true - builds version using PAPI for timers. Default is off."
 	@echo "    TAU=true      - builds version using TAU hooks for profiling. Default is off."
 	@echo "    AUTOCLEAN=true    - forces a clean of infrastructure prior to build new core."
+	@echo "    GEN_F90=true  - Generates intermediate .f90 files through CPP, and builds with them."
 	@echo ""
 	@echo "Ensure that NETCDF, PNETCDF, PIO, and PAPI (if USE_PAPI=true) are environment variables"
 	@echo "that point to the absolute paths for the libraries."
 	@echo ""
+ifdef CORE
+	exit 1
+endif
 

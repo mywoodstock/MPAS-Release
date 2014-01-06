@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -59,7 +59,7 @@ module mpas_block_creator
      type (block_type), pointer :: blockCursor
      type (field1dInteger), pointer :: fieldCursor
  
-     integer :: i, iHalo
+     integer :: i
      integer :: nBlocks
  
      nBlocks = size(blockID)
@@ -89,9 +89,9 @@ module mpas_block_creator
        nullify(fieldCursor % ioinfo)
  
        ! Initialize exchange lists
-       call mpas_dmpar_init_mulithalo_exchange_list(fieldCursor % sendList, nHalos)
-       call mpas_dmpar_init_mulithalo_exchange_list(fieldCursor % recvList, nHalos)
-       call mpas_dmpar_init_mulithalo_exchange_list(fieldCursor % copyList, nHalos)
+       call mpas_dmpar_init_multihalo_exchange_list(fieldCursor % sendList, nHalos)
+       call mpas_dmpar_init_multihalo_exchange_list(fieldCursor % recvList, nHalos)
+       call mpas_dmpar_init_multihalo_exchange_list(fieldCursor % copyList, nHalos)
  
        ! Allocate array, and copy indices into array
        allocate(fieldCursor % array(fieldCursor % dimSizes(1)))
@@ -104,7 +104,7 @@ module mpas_block_creator
          allocate(fieldCursor % next)
  
          blockCursor % next % prev => blockCursor
-  
+
          blockCursor => blockCursor % next
          fieldCursor => fieldCursor % next
        end if
@@ -147,10 +147,7 @@ module mpas_block_creator
 
      integer, dimension(:), pointer :: sendingHaloLayers
 
-     type (mpas_exchange_list), pointer :: exchListPtr
-
      integer :: nCellsInBlock, maxEdges, nHalos
-     integer :: i, iHalo
 
      nHalos = config_num_halos
 
@@ -266,7 +263,7 @@ module mpas_block_creator
 !>  This routine uses the previously setup 0 halo cell fields, and the blocks of
 !>  data read in by other routhers to determine which edges are in a blocks
 !>  0 and 1 halo for all blocks on a processor.
-!>  NOTE: This routine can be used on either edges or edges
+!>  NOTE: This routine can be used on either edges or vertices
 !
 !-----------------------------------------------------------------------
 
@@ -285,15 +282,12 @@ module mpas_block_creator
 
      type (field0dInteger), pointer :: offSetCursor, edgeLimitCursor
      type (field1dInteger), pointer :: indexToCellCursor, indexToEdgeCursor, nEdgesCursor, haloCursor, nEdgesSolveCursor
-     type (field2dInteger), pointer :: edgesOnCellCursor, cellsOnEdgeCursor, cellsOnCellCursor
-
-     type (mpas_exchange_list), pointer :: exchListPtr
+     type (field2dInteger), pointer :: edgesOnCellCursor, cellsOnEdgeCursor
 
      integer, dimension(:), pointer :: localEdgeList
      integer, dimension(:), pointer :: sendingHaloLayers
      integer :: nEdgesLocal, nCellsInBlock, maxEdges, edgeDegree, nHalos
      integer :: haloStart
-     integer :: iBlock, i, j, k
 
      ! Setup sendingHaloLayers
      allocate(sendingHaloLayers(1))
@@ -339,9 +333,9 @@ module mpas_block_creator
        allocate(cellsOnEdgeCursor % array(cellsOnEdgeCursor % dimSizes(1), cellsOnEdgeCursor % dimSizes(2)))
 
        ! Setup exchange lists
-       call mpas_dmpar_init_mulithalo_exchange_list(indexToEdgeCursor % sendList, nHalos+1)
-       call mpas_dmpar_init_mulithalo_exchange_list(indexToEdgeCursor % recvList, nHalos+1)
-       call mpas_dmpar_init_mulithalo_exchange_list(indexToEdgeCursor % copyList, nHalos+1)
+       call mpas_dmpar_init_multihalo_exchange_list(indexToEdgeCursor % sendList, nHalos+1)
+       call mpas_dmpar_init_multihalo_exchange_list(indexToEdgeCursor % recvList, nHalos+1)
+       call mpas_dmpar_init_multihalo_exchange_list(indexToEdgeCursor % copyList, nHalos+1)
 
        ! Link exchange lists
        cellsOnEdgeCursor % sendList => indexToEdgeCursor % sendList
@@ -510,10 +504,8 @@ module mpas_block_creator
 
      type (graph), pointer :: blockGraph, blockGraphWithHalo
 
-     type (mpas_exchange_list), pointer :: exchListPtr
-
      integer :: nHalos, nCellsInBlock, nCellsInHalo, maxEdges
-     integer :: iHalo, iBlock, i
+     integer :: iHalo
 
      nHalos = config_num_halos
      dminfo => indexToCellID % block % domain % dminfo
@@ -768,15 +760,15 @@ module mpas_block_creator
      type (field1dInteger), pointer :: haloIndices
 
      type (field0dInteger), pointer :: offSetCursor, edgeLimitCursor
-     type (field1dInteger), pointer :: indexToCellCursor, nEdgesCursor, nCellsSolveCursor, indexToEdgeCursor, nEdgesSolveCursor, haloCursor
+     type (field1dInteger), pointer :: nEdgesCursor, nCellsSolveCursor, indexToEdgeCursor, nEdgesSolveCursor, haloCursor
      type (field2dInteger), pointer :: edgesOnCellCursor, cellsOnEdgeCursor
 
      integer, dimension(:), pointer :: sendingHaloLayers
      integer, dimension(:), pointer :: array1dHolder, localEdgeList
      integer, dimension(:,:), pointer :: array2dHolder
 
-     integer :: iHalo, iBlock, i, j, k
-     integer :: nHalos, nBlocks, nCellsInBlock, nEdgesLocal, haloStart, haloEnd, haloSize
+     integer :: iHalo, iBlock, i, j
+     integer :: nHalos, nBlocks, nCellsInBlock, nEdgesLocal, haloSize
      integer :: maxEdges, edgeDegree
 
      type (hashtable), dimension(:), pointer :: edgeList
@@ -1076,6 +1068,38 @@ module mpas_block_creator
        nullify(indexToVertexCursor % sendList)
        nullify(indexToVertexCursor % recvList)
        nullify(indexToVertexCursor % copyList)
+
+       ! Setup next/prev multihalo exchange list pointers
+       !   (block 'next' pointers should be setup by now, but setting up 'next' pointers indirectly here)
+       if ( associated(block_ptr % prev) ) then
+          ! == Setup this block's 'prev' pointers ==
+          ! 1. For Cell exchange lists
+          block_ptr % parinfo % cellsToSend % prev => block_ptr % prev % parinfo % cellsToSend
+          block_ptr % parinfo % cellsToRecv % prev => block_ptr % prev % parinfo % cellsToRecv
+          block_ptr % parinfo % cellsToCopy % prev => block_ptr % prev % parinfo % cellsToCopy
+          ! 2. For Edge exchange lists
+          block_ptr % parinfo % edgesToSend % prev => block_ptr % prev % parinfo % edgesToSend
+          block_ptr % parinfo % edgesToRecv % prev => block_ptr % prev % parinfo % edgesToRecv
+          block_ptr % parinfo % edgesToCopy % prev => block_ptr % prev % parinfo % edgesToCopy
+          ! 3. For Vertex exchange lists
+          block_ptr % parinfo % verticesToSend % prev => block_ptr % prev % parinfo % verticesToSend
+          block_ptr % parinfo % verticesToRecv % prev => block_ptr % prev % parinfo % verticesToRecv
+          block_ptr % parinfo % verticesToCopy % prev => block_ptr % prev % parinfo % verticesToCopy
+          ! == Setup the previous block's 'next' pointers ==
+          ! 1. For Cell exchange lists
+          block_ptr % prev % parinfo % cellsToSend % next => block_ptr % parinfo % cellsToSend
+          block_ptr % prev % parinfo % cellsToRecv % next => block_ptr % parinfo % cellsToRecv
+          block_ptr % prev % parinfo % cellsToCopy % next => block_ptr % parinfo % cellsToCopy
+          ! 2. For Edge exchange lists
+          block_ptr % prev % parinfo % edgesToSend % next => block_ptr % parinfo % edgesToSend
+          block_ptr % prev % parinfo % edgesToRecv % next => block_ptr % parinfo % edgesToRecv
+          block_ptr % prev % parinfo % edgesToCopy % next => block_ptr % parinfo % edgesToCopy
+          ! 3. For Vertex exchange lists
+          block_ptr % prev % parinfo % verticesToSend % next => block_ptr % parinfo % verticesToSend
+          block_ptr % prev % parinfo % verticesToRecv % next => block_ptr % parinfo % verticesToRecv
+          block_ptr % prev % parinfo % verticesToCopy % next => block_ptr % parinfo % verticesToCopy
+          ! (the final block's 'next' pointer does not need to be dealt with because it was alredy nullified in mpas_dmpar_init_multihalo_exchange_list)
+       end if
 
        ! Advance cursors
        block_ptr => block_ptr % next

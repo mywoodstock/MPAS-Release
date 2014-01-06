@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -63,16 +63,16 @@ contains
 !
 !  routine ocn_tracer_hmix_del2_tend
 !
-!> \brief   Computes laplacian tendency term for horizontal tracer mixing
+!> \brief   Computes Laplacian tendency term for horizontal tracer mixing
 !> \author  Doug Jacobsen, Mark Petersen, Todd Ringler
 !> \date    September 2011
 !> \details 
 !>  This routine computes the horizontal mixing tendency for tracers
-!>  based on current state using a laplacian parameterization.
+!>  based on current state using a Laplacian parameterization.
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_tracer_hmix_del2_tend(grid, layerThicknessEdge, tracers, tend, err)!{{{
+   subroutine ocn_tracer_hmix_del2_tend(mesh, layerThicknessEdge, tracers, tend, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -84,7 +84,7 @@ contains
          layerThicknessEdge    !< Input: thickness at edge
 
       type (mesh_type), intent(in) :: &
-         grid          !< Input: grid information
+         mesh          !< Input: mesh information
 
       real (kind=RKIND), dimension(:,:,:), intent(in) :: &
         tracers !< Input: tracer quantities
@@ -112,55 +112,39 @@ contains
       !
       !-----------------------------------------------------------------
 
-      integer :: iCell, iEdge, nCells, nEdges, nVertLevels, cell1, cell2
+      integer :: iCell, iEdge, nCells, nVertLevels, cell1, cell2
       integer :: i, k, iTracer, num_tracers
-
-      integer, dimension(:,:), allocatable :: boundaryMask
 
       integer, dimension(:), pointer :: maxLevelEdgeTop, nEdgesOnCell
       integer, dimension(:,:), pointer :: cellsOnEdge, edgeMask, edgesOnCell, edgeSignOnCell
 
-      real (kind=RKIND) :: invAreaCell1, invAreaCell2
-      real (kind=RKIND) :: tracer_turb_flux, flux, r_tmp
+      real (kind=RKIND) :: invAreaCell, tracer_turb_flux, flux, r_tmp
 
-      real (kind=RKIND), dimension(:), pointer :: areaCell, dvEdge, dcEdge
-      real (kind=RKIND), dimension(:), pointer :: meshScalingDel2
-
-      !-----------------------------------------------------------------
-      !
-      ! call relevant routines for computing tendencies
-      ! note that the user can choose multiple options and the 
-      !   tendencies will be added together
-      !
-      !-----------------------------------------------------------------
+      real (kind=RKIND), dimension(:), pointer :: areaCell, dvEdge, dcEdge, meshScalingDel2
 
       err = 0
 
       if (.not.del2On) return
 
-      nEdges = grid % nEdges
-      nCells = grid % nCells
-      nVertLevels = grid % nVertLevels
+      nCells = mesh % nCells
+      nVertLevels = mesh % nVertLevels
       num_tracers = size(tracers, dim=1)
 
-      maxLevelEdgeTop => grid % maxLevelEdgeTop % array
-      cellsOnEdge => grid % cellsOnEdge % array
-      edgeMask => grid % edgeMask % array
-      areaCell => grid % areaCell % array
-      dvEdge => grid % dvEdge % array
-      dcEdge => grid % dcEdge % array
-      meshScalingDel2 => grid % meshScalingDel2 % array
+      maxLevelEdgeTop => mesh % maxLevelEdgeTop % array
+      cellsOnEdge => mesh % cellsOnEdge % array
+      edgeMask => mesh % edgeMask % array
+      areaCell => mesh % areaCell % array
+      dvEdge => mesh % dvEdge % array
+      dcEdge => mesh % dcEdge % array
+      meshScalingDel2 => mesh % meshScalingDel2 % array
 
-      nEdgesOnCell => grid % nEdgesOnCell % array
-      edgesOnCell => grid % edgesOnCell % array
-      edgeSignOnCell => grid % edgeSignOnCell % array
+      nEdgesOnCell => mesh % nEdgesOnCell % array
+      edgesOnCell => mesh % edgesOnCell % array
+      edgeSignOnCell => mesh % edgeSignOnCell % array
 
-      !
-      ! compute a boundary mask to enforce insulating boundary conditions in the horizontal
-      !
       do iCell = 1, nCells
-        invAreaCell1 = 1.0 / areaCell(iCell)
-        do i = 1, nEdgesOncell(iCell)
+        invAreaCell = 1.0 / areaCell(iCell)
+        do i = 1, nEdgesOnCell(iCell)
           iEdge = edgesOnCell(i, iCell)
           cell1 = cellsOnEdge(1,iEdge)
           cell2 = cellsOnEdge(2,iEdge)
@@ -175,7 +159,7 @@ contains
               ! div(h \kappa_2 \nabla \phi) at cell center
               flux = layerThicknessEdge(k, iEdge) * tracer_turb_flux * edgeMask(k, iEdge) * r_tmp
 
-              tend(iTracer, k, iCell) = tend(iTracer, k, iCell) - edgeSignOnCell(i, iCell) * flux * invAreaCell1
+              tend(iTracer, k, iCell) = tend(iTracer, k, iCell) - edgeSignOnCell(i, iCell) * flux * invAreaCell
             end do
           end do
 
@@ -195,7 +179,7 @@ contains
 !> \date    September 2011
 !> \details 
 !>  This routine initializes a variety of quantities related to 
-!>  laplacian horizontal velocity mixing in the ocean. 
+!>  Laplacian horizontal velocity mixing in the ocean. 
 !
 !-----------------------------------------------------------------------
 

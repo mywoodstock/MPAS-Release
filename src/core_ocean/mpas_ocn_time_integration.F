@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -27,6 +27,7 @@ module ocn_time_integration
    use mpas_vector_reconstruction
    use mpas_spline_interpolation
    use mpas_timer
+   use mpas_io_units
 
    use ocn_time_integration_rk4
    use ocn_time_integration_split
@@ -79,7 +80,7 @@ module ocn_time_integration
    ! Advance model state forward in time by the specified time step
    !
    ! Input: domain - current model state in time level 1 (e.g., time_levs(1)state%h(:,:)) 
-   !                 plus grid meta-data
+   !                 plus mesh meta-data
    ! Output: domain - upon exit, time level 2 (e.g., time_levs(2)%state%h(:,:)) contains 
    !                  model state advanced forward in time by dt seconds
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -103,12 +104,13 @@ module ocn_time_integration
 
      block => domain % blocklist
      do while (associated(block))
-        block % state % time_levs(2) % state % xtime % scalar = timeStamp
+!       block % state % time_levs(2) % state % xtime % scalar = timeStamp
+        block % diagnostics % xtime % scalar = timeStamp
 
         nanCheck = sum(block % state % time_levs(2) % state % normalVelocity % array)
 
         if (nanCheck /= nanCheck) then
-           write(0,*) 'Abort: NaN detected'
+           write(stderrUnit,*) 'Abort: NaN detected'
            call mpas_dmpar_abort(dminfo)
         endif
 
@@ -133,8 +135,8 @@ module ocn_time_integration
           splitOn = .true.
       else
           err = 1
-          write(*,*) 'Incorrect choice for config_time_integrator:', trim(config_time_integrator)
-          write(*,*) '   choices are: RK4, split_explicit, unsplit_explicit'
+          write (stderrUnit,*) 'Incorrect choice for config_time_integrator:', trim(config_time_integrator)
+          write (stderrUnit,*) '   choices are: RK4, split_explicit, unsplit_explicit'
       endif
 
 

@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -25,6 +25,7 @@ module ocn_equation_of_state
    use mpas_configure
    use ocn_equation_of_state_linear
    use ocn_equation_of_state_jm
+   use mpas_io_units
 
    implicit none
    private
@@ -51,7 +52,6 @@ module ocn_equation_of_state
    !
    !--------------------------------------------------------------------
 
-   logical :: eosON
    logical :: linearEos, jmEos
 
 
@@ -71,12 +71,13 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_equation_of_state_density(s, grid, k_displaced, displacement_type, density, err)!{{{
+   subroutine ocn_equation_of_state_density(state, diagnostics, mesh, k_displaced, displacement_type, density, err, &
+      thermalExpansionCoeff, salineContractionCoeff)!{{{
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    !  This module contains routines necessary for computing the density
    !  from model temperature and salinity using an equation of state.
    !
-   ! Input: grid - grid metadata
+   ! Input: mesh - mesh metadata
    !        s - state: tracers
    !        k_displaced 
    !
@@ -91,33 +92,39 @@ contains
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       implicit none
 
-      type (state_type), intent(inout) :: s
-      type (mesh_type), intent(in) :: grid
-      real (kind=RKIND), dimension(:,:), intent(out) :: density
-      integer, intent(out) :: err
+      type (state_type), intent(inout) :: state
+      type (diagnostics_type), intent(inout) :: diagnostics
+      type (mesh_type), intent(in) :: mesh
       integer :: k_displaced
       character(len=*), intent(in) :: displacement_type
+      real (kind=RKIND), dimension(:,:), intent(out) :: density
+      integer, intent(out) :: err
+      real (kind=RKIND), dimension(:,:), intent(out), optional :: &
+         thermalExpansionCoeff,  &! Thermal expansion coefficient (alpha), defined as $-1/\rho d\rho/dT$ (note negative sign)
+         salineContractionCoeff   ! Saline contraction coefficient (beta), defined as $1/\rho d\rho/dS$
 
       integer, dimension(:), pointer :: maxLevelCell
+      real (kind=RKIND), dimension(:,:), pointer :: tracersSurfaceValue
       real (kind=RKIND), dimension(:,:,:), pointer :: tracers
       integer :: nCells, iCell, k, indexT, indexS
       type (dm_info) :: dminfo
 
       err = 0
 
-      if(.not.eosOn) return
-
-      tracers => s % tracers % array
-      indexT = s % index_temperature
-      indexS = s % index_salinity
+      tracersSurfaceValue => diagnostics % tracersSurfaceValue % array
+      tracers => state % tracers % array
+      indexT = state % index_temperature
+      indexS = state % index_salinity
 
       if (linearEos) then
 
-         call ocn_equation_of_state_linear_density(grid, indexT, indexS, tracers, density, err)
+         call ocn_equation_of_state_linear_density(mesh, indexT, indexS, tracers, density, err, &
+            thermalExpansionCoeff, salineContractionCoeff)
 
       elseif (jmEos) then
 
-         call ocn_equation_of_state_jm_density(grid, k_displaced, displacement_type, indexT, indexS, tracers, density, err)
+         call ocn_equation_of_state_jm_density(mesh, k_displaced, displacement_type, indexT, indexS, tracers, density, err, &
+            tracersSurfaceValue, thermalExpansionCoeff, salineContractionCoeff)
 
       endif
 
@@ -151,22 +158,17 @@ contains
       integer, intent(out) :: err
 
       err = 0
-      eosON = .false.
       linearEos = .false.
       jmEos = .false.
 
-      if(config_vert_coord_movement.ne.'isopycnal') then
-          eosON = .true.
-
-          if (config_eos_type.eq.'linear') then
-              linearEos = .true.
-          elseif (config_eos_type.eq.'jm') then
-              jmEos = .true.
-          else
-              print *,'Invalid choice for config_eos_type.'
-              print *,'  Choices are: linear, jm'
-              err = 1
-          endif
+      if (config_eos_type.eq.'linear') then
+         linearEos = .true.
+      elseif (config_eos_type.eq.'jm') then
+         jmEos = .true.
+      else
+         write (stderrUnit,*) 'Invalid choice for config_eos_type.'
+         write (stderrUnit,*) '  Choices are: linear, jm'
+         err = 1
       endif
 
    !--------------------------------------------------------------------

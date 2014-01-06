@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -64,12 +64,13 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_equation_of_state_linear_density(grid, indexT, indexS, tracers, density, err)!{{{
+   subroutine ocn_equation_of_state_linear_density(mesh, indexT, indexS, tracers, density, err, &
+      thermalExpansionCoeff, salineContractionCoeff)!{{{
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    !  This module contains routines necessary for computing the density
    !  from model temperature and salinity using an equation of state.
    !
-   ! Input: grid - grid metadata
+   ! Input: mesh - mesh metadata
    !        s - state: tracers
    !        k_displaced 
    !  If k_displaced<=0, state % density is returned with no displaced
@@ -81,18 +82,21 @@ contains
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       implicit none
 
-      type (mesh_type), intent(in) :: grid
-      real (kind=RKIND), dimension(:,:), intent(inout) :: density
-      real (kind=RKIND), dimension(:,:,:), intent(in) :: tracers
+      type (mesh_type), intent(in) :: mesh
       integer, intent(in) :: indexT, indexS
+      real (kind=RKIND), dimension(:,:,:), intent(in) :: tracers
+      real (kind=RKIND), dimension(:,:), intent(inout) :: density
       integer, intent(out) :: err
+      real (kind=RKIND), dimension(:,:), intent(out), optional :: &
+         thermalExpansionCoeff,  &! Thermal expansion coefficient (alpha), defined as $-1/\rho d\rho/dT$ (note negative sign)
+         salineContractionCoeff   ! Saline contraction coefficient (beta), defined as $1/\rho d\rho/dS$
 
       integer, dimension(:), pointer :: maxLevelCell
       integer :: nCells, iCell, k
       type (dm_info) :: dminfo
 
-      maxLevelCell  => grid % maxLevelCell % array
-      nCells        =  grid % nCells
+      maxLevelCell  => mesh % maxLevelCell % array
+      nCells        =  mesh % nCells
 
       err = 0
 
@@ -104,6 +108,22 @@ contains
                   + config_eos_linear_beta  * (tracers(indexS,k,iCell)-config_eos_linear_Sref)
          end do
       end do
+
+      if (present(thermalExpansionCoeff)) then
+         do iCell=1,nCells
+            do k=1,maxLevelCell(iCell)
+               thermalExpansionCoeff(k,iCell) = config_eos_linear_alpha/density(k,iCell)
+            end do
+         end do
+      endif
+
+      if (present(salineContractionCoeff)) then
+         do iCell=1,nCells
+            do k=1,maxLevelCell(iCell)
+               salineContractionCoeff(k,iCell) = config_eos_linear_beta/density(k,iCell)
+            end do
+         end do
+      endif
 
    end subroutine ocn_equation_of_state_linear_density!}}}
 

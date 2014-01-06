@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -69,7 +69,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   subroutine ocn_vel_vadv_tend(grid, u, layerThicknessEdge, vertTransportVelocityTop, tend, err)!{{{
+   subroutine ocn_vel_vadv_tend(mesh, u, layerThicknessEdge, vertTransportVelocityTop, tend, err)!{{{
 
       !-----------------------------------------------------------------
       !
@@ -84,7 +84,7 @@ contains
          vertTransportVelocityTop  !< Input: Vertical velocity on top layer
 
       type (mesh_type), intent(in) :: &
-         grid          !< Input: grid information
+         mesh          !< Input: mesh information
 
       !-----------------------------------------------------------------
       !
@@ -121,11 +121,11 @@ contains
 
       err = 0
 
-      nVertLevels = grid % nVertLevels
-      nEdgesSolve = grid % nEdgesSolve
-      maxLevelEdgeTop => grid % maxLevelEdgeTop % array
-      cellsOnEdge => grid % cellsOnEdge % array
-      edgeMask => grid % edgeMask % array
+      nVertLevels = mesh % nVertLevels
+      nEdgesSolve = mesh % nEdgesSolve
+      maxLevelEdgeTop => mesh % maxLevelEdgeTop % array
+      cellsOnEdge => mesh % cellsOnEdge % array
+      edgeMask => mesh % edgeMask % array
 
       allocate(w_dudzTopEdge(nVertLevels+1))
       w_dudzTopEdge = 0.0
@@ -182,7 +182,7 @@ contains
       err = 0
       velVadvOn = .false.
 
-      if (config_vert_coord_movement.ne.'isopycnal') then
+      if (config_vert_coord_movement.ne.'impermeable_interfaces') then
           velVadvOn = .true.
       end if
 

@@ -1,4 +1,4 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
@@ -7,7 +7,7 @@
 !
 #define DM_BCAST_MACRO(A) call mpas_dmpar_bcast_reals(dminfo,size(A),A)
 
-!=============================================================================================
+!==================================================================================================
  module mpas_atmphys_rrtmg_lwinit
  use mpas_dmpar
  use mpas_kind_types
@@ -22,16 +22,31 @@
  private
  public:: rrtmg_initlw_forMPAS
 
+
+!>\brief main initialization module for the RRTMG long wave radiation code, based on the MPI
+!> decomposition used in MPAS. It replaces the initialization in module_ra_rrtgm_lw.F.
+!>\author Laura D. Fowler (send comments to laura@ucar.edu).
+!>\date 2013-05-01.
+!>
+!>\details
+!>
+!> subroutines in mpas_atmphys_rrtmg_lwinit:
+!> -----------------------------------------
+!> rrtmg_lwinit_forMPAS: call rrtmg_lwlookuptable from subroutine init_radiation_lw.
+!> rrtmg_lwlookuptable : read and broadcast all input data on MPAS nodes using MPI decomposition.
+!>
+ 
+
  contains
 
-!=============================================================================================
+!==================================================================================================
  subroutine rrtmg_initlw_forMPAS(dminfo)
-!=============================================================================================
+!==================================================================================================
 
 !input arguments:
  type(dm_info):: dminfo
 
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
 
 !read in absorption coefficients and other data:
  call rrtmg_lwlookuptable(dminfo)
@@ -42,9 +57,9 @@
 
  end subroutine rrtmg_initlw_forMPAS
 
-!=============================================================================================
+!==================================================================================================
  subroutine rrtmg_lwlookuptable(dminfo)
-!=============================================================================================
+!==================================================================================================
 
 !input arguments:
  type(dm_info),intent(in):: dminfo
@@ -53,7 +68,7 @@
  integer:: i,istat,rrtmg_unit
  logical:: opened
  character(len=StrKIND):: errmess
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
 
 !get a unit to open init file:
  istat = -999
@@ -76,7 +91,11 @@
 
 !open init file:
  if(dminfo % my_proc_id == IO_NODE) then
+#ifdef SINGLE_PRECISION
+    open(rrtmg_unit,file='RRTMG_LW_DATA',form='UNFORMATTED',status='OLD',iostat=istat)
+#else
     open(rrtmg_unit,file='RRTMG_LW_DATA.DBL',form='UNFORMATTED',status='OLD',iostat=istat)
+#endif
 
     if(istat /= 0) then
        write(errmess,'(A,I4)') 'module_ra_rrtmg_lw: error reading RRTMG_LW_DATA on unit', &
@@ -106,7 +125,7 @@
 
  end subroutine rrtmg_lwlookuptable
 
-!=============================================================================================
+!==================================================================================================
 
 ! **************************************************************************     
 !  RRTMG Longwave Radiative Transfer Model
@@ -1572,6 +1591,6 @@
 
       end subroutine lw_kgb16
 
-!=============================================================================================
+!==================================================================================================
  end module mpas_atmphys_rrtmg_lwinit
-!=============================================================================================
+!==================================================================================================

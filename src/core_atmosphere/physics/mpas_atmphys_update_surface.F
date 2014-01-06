@@ -1,13 +1,14 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
 ! Additional copyright and license information can be found in the LICENSE file
 ! distributed with this code, or at http://mpas-dev.github.com/license.html
 !
-!=============================================================================================
+!==================================================================================================
  module mpas_atmphys_update_surface
  use mpas_configure, only: config_frac_seaice,config_sfc_albedo
+ use mpas_dmpar
  use mpas_grid_types
 
  use mpas_atmphys_date_time
@@ -22,11 +23,31 @@
           physics_update_surface,     &
           physics_update_deepsoiltemp
 
+
+!>\brief update surface boundary conditions.
+!>\author Laura D. Fowler (send comments to laura@ucar.edu).
+!>\date 2013-05-01.
+!>
+!>\details
+!>
+!> subroutines in mpas_atmphys_update_surface:
+!> -------------------------------------------
+!> physics_update_surface     : update the surface albedo and greeness fraction.
+!> physics_update_sst         : update the sea-surface temperatures.
+!> physics_update_sstskin     : add a diurnal cycle to the sea-surface temperatures.
+!> physics_update_deepsoiltemp: update the deep soil temperatures.
+!>
+!> add-ons and modifications to sourcecode:
+!> ----------------------------------------
+!>    * revised subroutine physics_update_sst.
+!>      Laura D. Fowler (birch.mmm.ucar.edu) / 2013-08-24.
+
+
  contains
 
-!=============================================================================================
+!==================================================================================================
  subroutine physics_update_surface(current_date,mesh,sfc_input)
-!=============================================================================================
+!==================================================================================================
 
 !input variables:
  type(mesh_type),intent(in) :: mesh
@@ -47,7 +68,7 @@
  real(kind=RKIND),dimension(:)  ,pointer:: vegfra,shdmin,shdmax
  real(kind=RKIND),dimension(:,:),pointer:: greenfrac
  
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
 
  nCellsSolve = mesh % nCellsSolve
 
@@ -81,11 +102,12 @@
 
  end subroutine physics_update_surface
 
-!=============================================================================================
- subroutine physics_update_sst(mesh,sfc_input,diag_physics)
-!=============================================================================================
+!==================================================================================================
+ subroutine physics_update_sst(dminfo,mesh,sfc_input,diag_physics)
+!==================================================================================================
 
 !input arguments:
+ type(dm_info),intent(in):: dminfo
  type(mesh_type),intent(in):: mesh
 
 !inout arguments:
@@ -93,17 +115,23 @@
  type(diag_physics_type),intent(inout):: diag_physics
 
 !local variables:
+ integer:: icheck
  integer:: iCell,iSoil,nCellsSolve,nSoilLevels
- integer,dimension(:),pointer:: isltyp,ivgtyp
+ integer:: nb_to_land,nb_to_ocean,nb_removed
+ integer,dimension(:),pointer:: isltyp,ivgtyp,landmask
 
- real(kind=RKIND),dimension(:),pointer  :: sfc_albbck,sst,snow,tmn,tsk,vegfra,xice
+ real(kind=RKIND):: local_min,local_max
+ real(kind=RKIND):: global_sst_min,global_sst_max
+ real(kind=RKIND):: global_xice_min,global_xice_max
+
+ real(kind=RKIND),dimension(:),pointer  :: sfc_albbck,sst,snow,tmn,tsk,vegfra,xice,seaice
  real(kind=RKIND),dimension(:),pointer  :: snowc,snowh
  real(kind=RKIND),dimension(:,:),pointer:: tslb,sh2o,smois
 
  real(kind=RKIND),dimension(:),pointer:: sfc_albedo,sfc_emiss,sfc_emibck
  real(kind=RKIND),dimension(:),pointer:: xicem,xland
 
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
  write(0,*)
  write(0,*) '--- enter subroutine physics_update_sst:'
  write(0,*) '--- config_frac_seaice =', config_frac_seaice
@@ -116,6 +144,7 @@
 
  isltyp     => sfc_input    % isltyp   % array    
  ivgtyp     => sfc_input    % ivgtyp   % array
+ landmask   => sfc_input    % landmask % array
  vegfra     => sfc_input    % vegfra   % array
  sfc_albbck => sfc_input    % sfc_albbck % array
  sst        => sfc_input    % sst        % array
@@ -127,6 +156,7 @@
  snow       => sfc_input    % snow       % array
  snowc      => sfc_input    % snowc      % array
  snowh      => sfc_input    % snowh      % array
+ seaice     => sfc_input    % seaice     % array
  xice       => sfc_input    % xice       % array
  xland      => sfc_input    % xland      % array
 
@@ -135,48 +165,51 @@
  sfc_emibck => diag_physics % sfc_emibck % array
  xicem      => diag_physics % xicem      % array
 
- write(0,*)
- write(0,*) 'max sst  =',maxval(sst(1:nCellsSolve))
- write(0,*) 'min sst  =',minval(sst(1:nCellsSolve))
- write(0,*) 'max xice =',maxval(xice(1:nCellsSolve))
- write(0,*) 'min xice =',minval(xice(1:nCellsSolve))
-
- do iCell = 1, nCellsSolve
-
-    !update the skin temperature and the temperature in the first soil layer to the updated
-    !sea-surface temperature:
-    if(xland(iCell) .gt. 1.5) then
-       tsk(iCell)    = sst(iCell)
-       tslb(1,iCell) = sst(iCell)
-    endif
-
-    if(config_frac_seaice) then
-
-       if(xice(iCell).ne.xicem(iCell) .and. xicem(iCell).gt.xice_threshold) then
-          !Fractional values of sfc_albedo and sfc_emiss are valid according to the earlier
-          !fractional sea-ice fraction, xicem. We recompute them for the new sea-ice fraction,
-          !xice.
-          sfc_albedo(iCell) = 0.08 + (sfc_albedo(iCell) -0.08) * xice(iCell)/xicem(iCell)
-          sfc_emiss(iCell)  = 0.98 + (sfc_emiss(iCell)-0.98) * xice(iCell)/xicem(iCell)
+ if(config_frac_seaice) then
+    do iCell = 1,nCellsSolve
+       if(xice(iCell) < xice_threshold) xice(iCell) = 0._RKIND
+    enddo
+ elseif(.not.config_frac_seaice) then
+    do iCell = 1,nCellsSolve
+       if(xice(iCell) >= xice_threshold) then
+          xice(iCell) = 1._RKIND
+       else
+          xice(iCell) = 0._RKIND
        endif
+    enddo
+ endif
 
-    endif
- 
-    if(xland(iCell).gt.1.5 .and. xice(iCell).ge.xice_threshold .and. &
-       xicem(iCell).lt.xice_threshold) then
+!update the surface albedo and surface emissivity. before updating xice, sfc_albedo and sfc_emiss
+!are valid according to the earlier value of xice, xicem. now that xice has been updated, we also
+!update sfc_albedo and sfc_emiss accordingly:
+ if(config_frac_seaice) then
+    do iCell = 1, nCellsSolve
+       if(xice(iCell) /= xicem(iCell) .and. xicem(iCell) >= xice_threshold) then
+          sfc_albedo(iCell) = 0.08 + (sfc_albedo(iCell) -0.08) * xice(iCell)/xicem(iCell)
+          sfc_emiss(iCell)  = 0.98 + (sfc_emiss(iCell)-0.98  ) * xice(iCell)/xicem(iCell)
+       endif
+    enddo
+ endif
 
-    !... water points turn to sea-ice points:
-       xicem(iCell)  = xice(iCell)
-       xland(iCell)  = 1.
-       isltyp(iCell) = 16
+ nb_to_land  = 0
+ nb_to_ocean = 0
+ nb_removed  = 0
+ do iCell = 1, nCellsSolve
+    if(xland(iCell) >= 1.5_RKIND .and. xice(iCell) >=  xice_threshold .and. &
+       xicem(iCell) < xice_threshold) then
+
+       nb_to_land = nb_to_land + 1
+    !... sea-ice points are converted to land points:
        ivgtyp(iCell) = isice
-       vegfra(iCell) = 0.
-       tmn(iCell)    = 271.4
+       isltyp(iCell) = 16
+       vegfra(iCell) = 0._RKIND
+       xland(iCell)  = 1._RKIND
+       tmn(iCell)    = 271.4_RKIND
 
        do iSoil = 1, nSoilLevels
           tslb(iSoil,iCell)  = tsk(iCell)
-          smois(iSoil,iCell) = 1.0
-          sh2o(iSoil,iCell)  = 0.0
+          smois(iSoil,iCell) = 1.0_RKIND
+          sh2o(iSoil,iCell)  = 0.0_RKIND
        enddo
 
        !... over newly formed ice, initial guesses for the albedo and emissivity are based on
@@ -187,44 +220,96 @@
        sfc_albbck(iCell) = 0.80
        sfc_emibck(iCell) = 0.98
 
-    elseif(xland(iCell).lt.1.5 .and. xice(iCell).lt.xice_threshold .and. &
-       xicem(iCell).ge.xice_threshold) then
+    elseif(xland(iCell) < 1.5_RKIND .and. xice(iCell) < xice_threshold .and. &
+       xicem(iCell) >= xice_threshold) then
 
-       !sea-ice points turn to water points:
-       xicem(iCell)  = xice(iCell)
-       xland(iCell)  = 2.
-       isltyp(iCell) = 14
+       nb_to_ocean = nb_to_ocean + 1
+       !land points turn to water points:
        ivgtyp(iCell) = iswater
-       vegfra(iCell) = 0.
+       isltyp(iCell) = 14
+       vegfra(iCell) = 0._RKIND
+       xland(iCell)  = 2._RKIND
        tmn(iCell)    = sst(iCell)
-       
-       do iSoil = 1, nSoilLevels
-          tslb(iSoil,iCell)  = sst(iCell)
-          smois(iSoil,iCell) = 1.0
-          sh2o(iSoil,iCell)  = 1.0
-       enddo
-
-       sfc_albedo(iCell) = 0.08
-       sfc_albbck(iCell) = 0.08
-       sfc_emiss(iCell)  = 0.98
-       sfc_emibck(iCell) = 0.98
 
        snowc(iCell) = 0
-       snow(iCell)  = 0.0
-       snowh(iCell) = 0.0
+       snow(iCell)  = 0.0_RKIND
+       snowh(iCell) = 0.0_RKIND
 
-   endif
+       sfc_albedo(iCell) = 0.08_RKIND
+       sfc_albbck(iCell) = 0.08_RKIND
+       sfc_emiss(iCell)  = 0.98_RKIND
+       sfc_emibck(iCell) = 0.98_RKIND
 
-   !save xice from previous time-step before call to surface driver:
-   xicem(iCell) = xice(iCell)
-       
+       do iSoil = 1, nSoilLevels
+          tslb(iSoil,iCell)  = sst(iCell)
+          smois(iSoil,iCell) = 1.0_RKIND
+          sh2o(iSoil,iCell)  = 1.0_RKIND
+       enddo
+
+    elseif(xice(iCell) < xice_threshold .and. xicem(iCell) < xice_threshold) then
+       nb_removed  = nb_removed + 1
+       xice(iCell) = 0._RKIND
+
+    endif
+
+    if(xland(iCell) >= 1.5_RKIND) then
+       tsk(iCell)    = sst(iCell)
+       tslb(1,iCell) = sst(iCell)
+    endif
  enddo
+ write(0,*)
+ write(0,*) '--- nb of seaice points converted to land points  = ',nb_to_land
+ write(0,*) '--- nb of seaice points converted to ocean points = ',nb_to_ocean
+ write(0,*) '--- nb of seaice points less than xice threshold  = ',nb_removed
+
+!finally, update the sea-ice flag. save xice prior to next update:
+ do iCell = 1, nCellsSolve
+    xicem(iCell)  = xice(iCell)
+    seaice(iCell) = 0._RKIND
+    if(xice(iCell) > 0._RKIND) then
+       seaice(iCell) = 1._RKIND
+    endif
+ enddo
+
+!local and global max and min sea-surface temperatures and fractional sea-ice:
+ local_min =  999._RKIND
+ local_max = -999._RKIND
+ do iCell = 1,nCellsSolve
+    if(xland(iCell) == 2._RKIND .and. sst(iCell) <= local_min) local_min = sst(iCell)
+    if(xland(iCell) == 2._RKIND .and. sst(iCell) >= local_max) local_max = sst(iCell)
+ enddo
+ call mpas_dmpar_min_real(dminfo,local_min,global_sst_min)
+ call mpas_dmpar_max_real(dminfo,local_max,global_sst_max)
+ write(0,*)
+ write(0,*) '--- min local SST   = ',local_min
+ write(0,*) '--- max local SST   = ',local_max
+ write(0,*) '--- min global SST  = ',global_sst_min
+ write(0,*) '--- max global SST  = ',global_sst_max
+
+ local_min =  999._RKIND
+ local_max = -999._RKIND 
+ do iCell = 1,nCellsSolve
+    if(xland(iCell) == 1._RKIND .and. xice(iCell) <= local_min) local_min = xice(iCell)
+    if(xland(iCell) == 1._RKIND .and. xice(iCell) >= local_max) local_max = xice(iCell) 
+ enddo
+ call mpas_dmpar_min_real(dminfo,local_min,global_xice_min)
+ call mpas_dmpar_max_real(dminfo,local_max,global_xice_max)
+ if(local_min .eq.  999._RKIND) local_min = 0._RKIND
+ if(local_max .eq. -999._RKIND) local_max = 0._RKIND
+ write(0,*)
+ write(0,*) '--- min local XICE  = ',local_min
+ write(0,*) '--- max local XICE  = ',local_max
+ write(0,*) '--- min global XICE = ',global_xice_min
+ write(0,*) '--- max global XICE = ',global_xice_max
+
+ write(0,*) '--- end subroutine physics_update_sst'
+ write(0,*)
 
  end subroutine physics_update_sst
 
-!=============================================================================================
+!==================================================================================================
  subroutine physics_update_sstskin(dt,mesh,diag_physics,sfc_input)
-!=============================================================================================
+!==================================================================================================
 
 !input arguments:
  type(mesh_type),intent(in):: mesh
@@ -252,7 +337,7 @@
  real(kind=RKIND),dimension(:),pointer:: emiss,ust
  real(kind=RKIND),dimension(:),pointer:: sstsk,dtc1,dtw1
 
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
  write(0,*)
  write(0,*) '--- enter subroutine physics_update_sstskin:'
 
@@ -352,17 +437,14 @@
 
 !update the surface temperature over the oceans:
  do iCell = 1, nCellsSolve
-    if(xland(iCell) .gt. 1.5) tsk(iCell) = sstsk(iCell)
+    if(xland(iCell) .ge. 1.5) tsk(iCell) = sstsk(iCell)
  enddo
-
- write(0,*) 'check skin sst skinmax = ', skinmax
- write(0,*) 'check skin sst skinmin = ', skinmin
 
  end subroutine physics_update_sstskin
 
-!=============================================================================================
+!==================================================================================================
  subroutine physics_update_deepsoiltemp(LeapYear,dt,julian_in,mesh,sfc_input,diag_physics)
-!=============================================================================================
+!==================================================================================================
 
 !input arguments:
  type(mesh_type),intent(in) :: mesh
@@ -382,7 +464,7 @@
  real(kind=RKIND),dimension(:),pointer  :: tday_accum,tmn,tsk,tyear_accum,tyear_mean
  real(kind=RKIND),dimension(:,:),pointer:: tlag 
 
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
 !write(0,*)
 !write(0,*) '--- enter subroutine physics_update_deepsoiltemp:' 
 
@@ -460,8 +542,8 @@
 
  end subroutine physics_update_deepsoiltemp
 
-!=============================================================================================
+!==================================================================================================
  end module mpas_atmphys_update_surface
-!=============================================================================================
+!==================================================================================================
 
 

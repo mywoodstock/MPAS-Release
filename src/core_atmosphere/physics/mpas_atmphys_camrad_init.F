@@ -1,13 +1,17 @@
-! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS) (LA-CC-13-047)
+! Copyright (c) 2013,  Los Alamos National Security, LLC (LANS)
 ! and the University Corporation for Atmospheric Research (UCAR).
 !
 ! Unless noted otherwise source code is licensed under the BSD license.
 ! Additional copyright and license information can be found in the LICENSE file
 ! distributed with this code, or at http://mpas-dev.github.com/license.html
 !
+#ifdef SINGLE_PRECISION
+#define DM_BCAST_MACRO(A) call mpas_dmpar_bcast_doubles(dminfo,size(A),A)
+#else
 #define DM_BCAST_MACRO(A) call mpas_dmpar_bcast_reals(dminfo,size(A),A)
+#endif
 
-!=============================================================================================
+!==================================================================================================
  module mpas_atmphys_camrad_init
  use mpas_dmpar
  use mpas_kind_types
@@ -23,29 +27,57 @@
  private
  public:: camradinit
 
-!FOR NOW HERE, BUT NEEDS TO BE MOVED SOMEWHERE ELSE:
-!INITIALIZATION FOR INPUT OZONE DATA:
+
+!>\brief Initialization of CAM radiation codes using MPAS MPI decomposition.
+!>\author Laura D. Fowler (send comments to laura@ucar.edu).
+!>\date 2013-05-01.
+!>
+!>\details
+!> subroutine camradinit calls the main subroutines needed to initialize the long- and short-wave
+!> CAM radiation codes, and read input data from auxillary files.
+!>
+!> subroutines called in mpas_atmphys_camrad_init:
+!> -----------------------------------------------
+!> radini      :initialization of radiation constants.
+!> esinti      :initialization of saturation vapor pressures.
+!> oznini      :initialization of climatological monthly-mean ozone profiles.
+!> aerosol_init:initialization of aerosol optical properties.
+!>
+!> add-ons and modifications to sourcecode:
+!> ----------------------------------------
+!>    * added initialization of variable mxaerl which is the number of layers below 900 hPa in
+!>      which background aerosols are present. mxaerl is computed using the pressure-base array.
+!>      -> added diag in the argument list of subroutines camradinit and aerosol_init.
+!>      -> in subroutine aerosol_init, added initialization of variable mxaerl.
+!>      Laura D. Fowler (birch.ucar.edu) / 2013-07-01.
+!>    * moved the arrays pin and ozmixm from the mesh structure to the atm_input structure in
+!>      subroutine oznini.
+!>      Laura D. Fowler (birch.ucar.edu) / 2013-07-08.
+
+!local parameters:
  integer,parameter:: latsiz = 64
  integer,parameter:: lonsiz = 1
 
  contains
 
-!=============================================================================================
- subroutine camradinit(dminfo,mesh,state_1,state_2)
-!=============================================================================================
+!==================================================================================================
+ subroutine camradinit(dminfo,mesh,atm_input,diag,state_1,state_2)
+!==================================================================================================
 
 !input arguments:
  type(dm_info),intent(in):: dminfo
- type(mesh_type),intent(in) :: mesh
+ type(mesh_type),intent(in):: mesh
+ type(diag_type),intent(in):: diag
 
 !inout arguments:
+ type(atm_input_type),intent(inout):: atm_input
  type(state_type),intent(inout):: state_1,state_2 
 
 !local variables:
  real(r8):: pstd
  real(r8):: rh2o, cpair
 
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
 
 !...these were made allocatable 20090612 to save static memory allocation. JM:
  if ( .not. allocated( ksul   ) ) allocate( ksul(nrh,nspint)   )
@@ -102,18 +134,18 @@
  write(0,*) '    end subroutine esinti'
  
 !initialization of ozone mixing ratios:
- call oznini(mesh)
+ call oznini(mesh,atm_input)
  write(0,*) '    end subroutine oznini'
 
 !initialization of aerosol concentrations:
- call aerosol_init(dminfo,mesh,state_1,state_2)
+ call aerosol_init(dminfo,mesh,diag,state_1,state_2)
  write(0,*) '    end subroutine aerosol_init'
 
  end subroutine camradinit
 
-!=============================================================================================
+!==================================================================================================
  subroutine radini(dminfo,gravx,cpairx,epsilox,stebolx,pstdx)
-!----------------------------------------------------------------------- 
+!--------------------------------------------------------------------------------------------------
 ! 
 ! Purpose: 
 ! Initialize various constants for radiation scheme; note that
@@ -207,9 +239,9 @@
 
  end subroutine radini
 
-!=============================================================================================
+!==================================================================================================
  subroutine radaeini(dminfo,pstdx,mwdryx,mwco2x)
-!=============================================================================================
+!==================================================================================================
 
 !input arguments:
  type(dm_info),intent(in):: dminfo
@@ -263,7 +295,7 @@
 
  integer:: i_te,i_rh
 
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
 
 !... constants to set:
  p0     = pstdx
@@ -353,9 +385,9 @@
 
  end subroutine radaeini
 
-!=============================================================================================
- subroutine aerosol_init(dminfo,mesh,state_1,state_2)
-!=============================================================================================
+!==================================================================================================
+ subroutine aerosol_init(dminfo,mesh,diag,state_1,state_2)
+!==================================================================================================
 
 !This subroutine assumes a uniform aerosol distribution in both time and space. It should be
 !modified if aerosol data are available from WRF-CHEM or other sources.
@@ -363,16 +395,20 @@
 !input arguments:!
  type(dm_info),intent(in)  :: dminfo
  type(mesh_type),intent(in):: mesh
+ type(diag_type),intent(in):: diag
 
 !inout arguments:
  type(state_type),intent(inout):: state_1,state_2
 
 !local variables:
- integer:: iCell,k,nAerLevels,nCells
+ integer:: max_mxaerl
+ integer,dimension(:),allocatable:: mxaerl_local
+ integer:: iCell,k,kk,nAerLevels,nCells,nCellsSolve,nVertLevels
 
  real(kind=RKIND):: psurf
  real(kind=RKIND),dimension(:),pointer:: m_psp,m_psn
  real(kind=RKIND),dimension(:,:),pointer:: m_hybi
+ real(kind=RKIND),dimension(:,:),pointer:: pressure_b
  real(kind=RKIND),dimension(:,:,:),pointer:: aerosolcn,aerosolcp
 
  real(kind=RKIND),dimension(29) :: hybi  
@@ -386,12 +422,16 @@
               0.866419970989227 , 0.901350021362305 , 0.930540025234222 , & 
               0.954590022563934 , 0.974179983139038 , 0.990000009536743 , 1/
 
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
 
 !initialization:
- nCells     = mesh % nCells
- nAerLevels = mesh % nAerLevels
+ nCells      = mesh % nCells
+ nCellsSolve = mesh % nCellsSolve
+ nAerLevels  = mesh % nAerLevels
+ nVertLevels = mesh % nVertLevels
  m_hybi => mesh % m_hybi % array
+
+ pressure_b => diag % pressure_base % array
 
  m_psp => state_1 % m_ps % array
  m_psn => state_2 % m_ps % array
@@ -411,6 +451,23 @@
     m_psp(iCell) = psurf
     m_psn(iCell) = psurf
  enddo
+
+!mxaerl = max number of levels (from bottom) for background aerosol. Limit background aerosol
+!height below 900 mb:
+ if(.not.allocated(mxaerl_local)) allocate(mxaerl_local(1:nCellsSolve))
+ mxaerl_local(1:nCellsSolve) = 0
+ do k = 1, nVertLevels
+ do iCell = 1, nCellsSolve
+    if(pressure_b(k,iCell) .ge. 9.e04) mxaerl_local(iCell) = mxaerl_local(iCell) + 1
+ enddo
+ enddo 
+
+ max_mxaerl = maxval(mxaerl_local(1:nCellsSolve))
+ call mpas_dmpar_max_int(dminfo,max_mxaerl,mxaerl)
+ write(0,101) max_mxaerl,mxaerl
+ 101 format(/,1x,'--- AEROSOLS:mxaerl on node = ',i5, &
+            /,1x,'    AEROSOLS:Background aerosol limited to bottom ',i5,' model interfaces')
+ if(allocated(mxaerl_local)) deallocate(mxaerl_local)
 
 !initialize indices for water species:
  ozncyc = .true.
@@ -472,9 +529,9 @@
 
  end subroutine aerosol_init
 
-!=============================================================================================
+!==================================================================================================
  subroutine aer_optics_initialize(dminfo)
-!=============================================================================================
+!==================================================================================================
 
 !input arguments:
  type(dm_info):: dminfo
@@ -513,7 +570,7 @@
  logical:: opened
  character(len=StrKIND):: errmess
  
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
 
 !write(0,*) '--- enter subroutine aer_optics_initialize:'
 
@@ -655,19 +712,22 @@
     enddo
  enddo
 
- write(0,*) '--- end subroutine aer_optics_initialize:'
+ write(0,*) '    end subroutine aer_optics_initialize:'
 
  end subroutine aer_optics_initialize
 
-!=============================================================================================
- subroutine oznini(mesh)
-!=============================================================================================
+!==================================================================================================
+ subroutine oznini(mesh,atm_input)
+!==================================================================================================
 
 !This subroutine assumes a uniform distribution of ozone concentration. It should be replaced
 !with monthly climatology varying ozone distribution.
 
 !input arguments:
  type(mesh_type),intent(in):: mesh
+
+!inout arguments:
+ type(atm_input_type),intent(inout):: atm_input
 
 !local variables:
  integer,parameter:: pin_unit = 27
@@ -679,7 +739,7 @@
  integer:: iCell,nCells,num_months,levsiz
  
  real(kind=RKIND),dimension(:),pointer:: latCell,lonCell
- real(kind=RKIND),dimension(:,:),pointer:: pin
+ real(kind=RKIND),dimension(:),pointer:: pin
  real(kind=RKIND),dimension(:,:,:),pointer:: ozmixm
 
  real(kind=RKIND):: lat,lon,dlat,dlatCell
@@ -687,15 +747,15 @@
 !real(Kind=RKIND),dimension(lonsiz,levsiz,latsiz,num_months):: ozmixin
  real(Kind=RKIND),dimension(:,:,:,:),allocatable:: ozmixin
 
-!---------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
 
  nCells     = mesh % nCells
  num_months = mesh % nMonths
  levsiz     = mesh % nOznLevels
- pin => mesh % pin % array
- ozmixm  => mesh % ozmixm  % array
  latCell => mesh % latCell % array
  lonCell => mesh % lonCell % array
+ pin     => atm_input % pin % array
+ ozmixm  => atm_input % ozmixm % array
 
 !-- read in ozone pressure data:
  open(pin_unit,file='OZONE_PLEV.TBL',action='READ',status='OLD',iostat=istat)
@@ -703,12 +763,9 @@
     call physics_error_fatal('subroutine oznini: ' // &
                              'failure opening OZONE_PLEV.TBL')
  do k = 1,levsiz
-    read(pin_unit,*) pin(k,1)
-    pin(k,1) = pin(k,1)*100.
-    do i = 1, nCells
-       pin(k,i) = pin(k,1)
-    enddo
-!   write(0,*) pin(k,1)
+    read(pin_unit,*) pin(k)
+    pin(k) = pin(k)*100.
+!   write(0,*) pin(k)
  enddo
  close(pin_unit)
 
@@ -774,7 +831,7 @@
        if(dlat == 0.) then
           ozmixm(m,k,iCell) = ozmixin(j,k,i1,m)
        else
-          ozmixm(m,k,iCell) = ozmixin(j,k,i1,m) \
+          ozmixm(m,k,iCell) = ozmixin(j,k,i1,m) &
                      + (ozmixin(j,k,i2,m)-ozmixin(j,k,i1,m))*dlatCell/dlat
        endif
     enddo 
@@ -793,6 +850,6 @@
 
  end subroutine oznini
 
-!=============================================================================================
+!==================================================================================================
  end module mpas_atmphys_camrad_init
-!=============================================================================================
+!==================================================================================================
